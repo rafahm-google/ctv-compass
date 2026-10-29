@@ -17,14 +17,6 @@ Por padrão (`identification_mode = "both"`), o **CTV Compass** processa e entre
 
 Todas as tabelas e cards passam por **5 Travas Matemáticas Automáticas** (`assert` em Python) antes da geração do relatório, com fórmulas abertas (`📐 Como calculamos`) em todos os slides.
 
----
-
-## Como Funciona na Agência (2 Perfis)
-
-* **Para Planejamento / Mídia (Uso no Navegador — Zero Código):**
-  Acessa o link interno da agência, clica em **"Entrar com Google"** (ou entra direto via Conta de Serviço), seleciona a **Campanha** em um menu suspenso, revisa as caixas das **Tags Floodlight de Compra** pré-selecionadas e clica em **Gerar Apresentação Executiva** para baixar o deck `.html`.
-* **Para TI / BI da Agência (Deploy Único e Conexão com a API do CM360):**
-  Hospeda este repositório (Cloud Run, Docker ou servidor interno) e configura a credencial da API do CM360 uma única vez via variáveis de ambiente — sem expor arquivos JSON para os usuários finais nem no GitHub.
 
 ---
 
