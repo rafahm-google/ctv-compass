@@ -1,68 +1,80 @@
-# CTV Compass — Mensuração Executiva de CTV no CM360
+# ctv-compass
 
-Portal web auto-hospedado e pipeline de auditoria em Python para agências e anunciantes mensurarem o impacto real de **Connected TV (`CTV`)** diretamente via **Campaign Manager 360 API (`v5`)**, triangulando automaticamente **3 relatórios oficiais** na mesma janela de datas e `Campaign ID`:
+Serviço HTTP e pipeline CLI em Python para mensuração de campanhas de Connected TV (CTV) sobre a API do Campaign Manager 360 (`dfareporting` v5).
 
-1. **`STANDARD`:** Custo de mídia (`DV360 Cost` / `Media Cost`), plataforma física de entrega (`Platform Type`) e conversões diretas de último toque (`Click-Through` + `View-Through`).
-2. **`REACH`:** Alcance único deduplicado (`Unique Reach`), *Co-Viewing* na tela grande e sobreposição de audiência (`Reach Overlap 1+`) entre canais e dispositivos.
-3. **`PATH_TO_CONVERSION (14 dias)`:** Jornadas completas deduplicadas por pedido (`Conversion ID`), isolando vendas solo, economia de toques até a conversão e expansão de ticket médio (`AOV`).
+O pipeline extrai e reconcilia três relatórios do CM360 na mesma janela de datas e `Campaign ID`:
+1. `STANDARD`: custo (`DV360 Cost` / `Media Cost`), `Platform Type` e conversões de último toque (`Click-Through` e `View-Through`).
+2. `REACH`: `Unique Reach` deduplicado, `Co-Viewed Reach` e sobreposição cross-channel / cross-device (`Duplicate Impression Reach`).
+3. `PATH_TO_CONVERSION`: jornadas deduplicadas por `Conversion ID`, vendas solo, toques médios até a conversão e ticket médio (`AOV`).
 
----
-
-## Visão Dupla de CTV (`Naming do Site` + `Validação por Device Type`)
-
-Por padrão (`identification_mode = "both"`), o **CTV Compass** processa e entrega as duas leituras em **um único deck HTML interativo de 8 slides** (pronto para apresentar no navegador ou exportar em PDF):
-
-* **Visão 1 — Naming do Site (`CTV`):** Avalia os veículos nomeados com `CTV` pela agência no CM360.
-* **Visão 2 — Validação por Device Type (`Smart TV + Set-top Box`):** Filtra fisicamente `platformType IN ('Connected TV' [30004], 'Set top box' [30006])` em todos os Sites da campanha, aplica a **Lei da Inclusão-Exclusão Exata** (`|A ∩ B| = |A| + |B| - |U|`) para eliminar dupla contagem `TV ∩ TV` entre veículos e **ativa-se automaticamente como visão principal** quando a campanha não utiliza `CTV` na nomenclatura dos Sites.
-
-Todas as tabelas e cards passam por **5 Travas Matemáticas Automáticas** (`assert` em Python) antes da geração do relatório, com fórmulas abertas (`📐 Como calculamos`) em todos os slides.
+Por padrão (`identification_mode="both"`), a saída é um arquivo HTML único autocontido (imagens renderizadas em `matplotlib` embutidas em Base64) com duas visões comutáveis:
+- `site`: classifica CTV pelo nome do `Site (CM360)`.
+- `device`: filtra `platformType IN ('Connected TV' [30004], 'Set top box' [30006])` em todos os Sites da campanha, calcula a interseção `|CTV ∩ Non-CTV| = |CTV| + |Non-CTV| - |Total|` para remover sobreposição `TV ∩ TV` e assume como aba padrão caso nenhum Site possua `CTV` no nome.
 
 ---
 
-## Passo a Passo Completo de Implementação (TI / BI da Agência)
+## Requisitos
 
-A implementação na agência é feita **uma única vez** pelo time técnico (BI, Engenharia de Dados ou TI). Depois de publicado, os analistas de mídia e planejamento usam tudo pelo navegador sem precisar tocar em código ou arquivos JSON.
-
-### Etapa 1 — Garantir Permissões no CM360
-A conta Google (de cada analista no Modelo A, ou a Conta de Serviço no Modelo B) precisa ter um **User Profile ativo no CM360** com acesso ao anunciante e permissão para:
-* Visualizar campanhas, anunciantes e atividades Floodlight (`dfatrafficking`).
-* Criar, executar e baixar relatórios `Standard`, `Reach` e `Path to Conversion` (`dfareporting`).
-
-### Etapa 2 — Configurar Projeto e Credenciais no Google Cloud
-1. Acesse o [Google Cloud Console](https://console.cloud.google.com/) e crie (ou selecione) um projeto da agência.
-2. Em **APIs e Serviços > Biblioteca**, pesquise e ative a **Campaign Manager 360 API** (`dfareporting.googleapis.com`).
-   *(Opcional: caso utilize também reconciliação direta com DV360 via linha de comando, ative a **Display & Video 360 API** e a **DoubleClick Bid Manager API**).*
-3. Escolha **um** dos dois modelos de autenticação abaixo:
-
-#### Modelo A (Recomendado) — Login Individual por Usuário (`Entrar com Google` na tela)
-Cada analista faz login com seu próprio e-mail corporativo que já tem acesso ao CM360:
-1. Em **APIs e Serviços > Tela de permissão OAuth (OAuth consent screen)**:
-   * Selecione **Interno** (se todos os usuários forem do Google Workspace da agência) ou **Externo** (adicionando os e-mails autorizados em *Test users* enquanto estiver em modo de teste).
-   * Adicione os escopos `.../auth/dfareporting` e `.../auth/dfatrafficking`.
-2. Em **APIs e Serviços > Credenciais > Criar Credenciais > ID do cliente OAuth**:
-   * Tipo de aplicativo: **Aplicativo da Web (Web application)**.
-   * Em **URIs de redirecionamento autorizados (Authorized redirect URIs)**, cadastre:
-     * `http://localhost:8080/auth/callback` (para testes locais)
-     * `https://SEU-DOMINIO-OU-CLOUD-RUN/auth/callback` (URL final onde o portal ficará hospedado)
-3. Copie os valores gerados de **ID do cliente (`GOOGLE_CLIENT_ID`)** e **Chave secreta do cliente (`GOOGLE_CLIENT_SECRET`)**.
-
-#### Modelo B — Conta de Serviço Centralizada no Servidor (Sem Botão de Login)
-Ideal quando o BI da agência opera o portal atrás de VPN / Google IAP com um único perfil técnico no CM360:
-1. Em **IAM e Admin > Contas de Serviço**, crie uma Service Account e gere uma chave JSON.
-2. Copie o e-mail da Service Account (`...@....iam.gserviceaccount.com`) e cadastre-o como um **User Profile** dentro do CM360 com acesso aos anunciantes desejados.
-3. No servidor, forneça o conteúdo do JSON na variável `CM360_CREDENTIALS_JSON` (ou o caminho do arquivo em `CM360_CREDENTIALS_FILE`).
+- Python `>= 3.10`
+- Projeto no Google Cloud com a API `dfareporting.googleapis.com` habilitada (opcionalmente `displayvideo.googleapis.com` e `doubleclickbidmanager.googleapis.com` caso utilize enriquecimento DV360 via CLI)
+- Conta Google ou Service Account vinculada a um `User Profile` ativo no CM360 com escopos:
+  - `https://www.googleapis.com/auth/dfareporting`
+  - `https://www.googleapis.com/auth/dfatrafficking`
 
 ---
 
-### Etapa 3 — Hospedar e Colocar o Portal no Ar
+## Configuração de Autenticação e Variáveis de Ambiente
 
-> **Nota de Arquitetura:** O portal mantém sessões OAuth e o progresso dos jobs em memória durante a execução (relatórios `Reach` e `Path to Conversion` do CM360 levam de 1 a 4 minutos para processar). Em ambientes serverless como Cloud Run, configure `--timeout 900` e `--max-instances 1` (com `--concurrency 20`) para garantir que o stream de progresso permaneça na mesma instância.
+O servidor HTTP (`web_app.py`) suporta dois modos de autenticação mutuamente exclusivos (priorizando OAuth 2.0 Web Client caso ambos estejam definidos):
 
-#### Opção 1 — Deploy em 1 comando no Google Cloud Run (Recomendado)
+1. **OAuth 2.0 Web Application (login individual por usuário):**
+   No Google Cloud Console (`APIs & Services > Credentials`), crie um `OAuth client ID` do tipo `Web application` e registre `<BASE_URL>/auth/callback` (ex.: `http://localhost:8080/auth/callback` e `https://<dominio>/auth/callback`) em `Authorized redirect URIs`.
+2. **Service Account / Credencial de Servidor (sem tela de login):**
+   Cadastre o e-mail da Service Account como `User Profile` no CM360 com acesso aos anunciantes alvo e injete o JSON via variável de ambiente. Recomenda-se restringir o acesso de rede ao serviço via Cloud Run IAM, IAP ou VPN.
+
+| Variável | Obrigatória | Descrição |
+| :--- | :--- | :--- |
+| `PORT` | Não | Porta de escuta HTTP (padrão: `8080`). |
+| `GOOGLE_CLIENT_ID` | Modo OAuth | Client ID do OAuth 2.0 Web Application. |
+| `GOOGLE_CLIENT_SECRET` | Modo OAuth | Client Secret do OAuth 2.0 Web Application. |
+| `GOOGLE_CLIENT_SECRETS_FILE` | Não | Alternativa local às variáveis acima (padrão procurado: `client_secrets.json`). |
+| `PUBLIC_BASE_URL` | Não | URL externa canônica (ex.: `https://ctv.agencia.com.br`) usada para montar `redirect_uri` atrás de proxies reversos. |
+| `CM360_CREDENTIALS_JSON` | Modo Server | String JSON completa da Service Account ou `authorized_user`. |
+| `CM360_CREDENTIALS_FILE` | Modo Server | Caminho no disco para o JSON da Service Account ou `authorized_user`. |
+| `ALLOW_LOCAL_TOKEN` | Não | Se `true`/`1`, permite ler `token.json` local no modo servidor (uso em desenvolvimento). |
+
+---
+
+## Execução e Deploy
+
+### Local
 ```bash
-git clone https://github.com/rafahm-google/ctv-compass.git
-cd ctv-compass
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 
+# Executa a suíte de validação offline (invariantes matemáticas + servidor HTTP)
+python test_self_check.py
+
+export GOOGLE_CLIENT_ID="..."
+export GOOGLE_CLIENT_SECRET="..."
+python web_app.py
+```
+
+### Docker
+```bash
+docker build -t ctv-compass .
+docker run --rm -p 8080:8080 \
+  -e GOOGLE_CLIENT_ID="..." \
+  -e GOOGLE_CLIENT_SECRET="..." \
+  -e PUBLIC_BASE_URL="https://ctv.exemplo.com" \
+  ctv-compass
+```
+
+### Google Cloud Run
+Sessões OAuth (`_SESSIONS`) e jobs em execução (`_JOBS`) são mantidos na memória do processo, e relatórios `REACH` / `PATH_TO_CONVERSION` no CM360 podem levar de 1 a 4 minutos para finalizar. Configure `--timeout 900` e `--max-instances 1` (ou afinidade de sessão):
+
+```bash
 gcloud run deploy ctv-compass \
   --source . \
   --region southamerica-east1 \
@@ -70,147 +82,93 @@ gcloud run deploy ctv-compass \
   --memory 2Gi \
   --max-instances 1 \
   --concurrency 20 \
-  --set-env-vars "GOOGLE_CLIENT_ID=SEU_CLIENT_ID,GOOGLE_CLIENT_SECRET=SEU_CLIENT_SECRET"
+  --set-env-vars "GOOGLE_CLIENT_ID=...,GOOGLE_CLIENT_SECRET=..."
 ```
-Após o comando terminar, copie a URL gerada pelo Cloud Run (ex.: `https://ctv-compass-xyz.southamerica-east1.run.app`) e adicione `https://ctv-compass-xyz.southamerica-east1.run.app/auth/callback` nos **URIs de redirecionamento autorizados** do seu OAuth Client no Google Cloud Console.
+Após o deploy, adicione `https://<service-url>/auth/callback` em `Authorized redirect URIs` no Google Cloud Console.
 
-#### Opção 2 — Deploy via Docker (VM, AWS ECS, Azure ou Servidor Interno)
+### Linha de Comando (CLI)
 ```bash
-docker build -t ctv-compass .
+# 1. Descobrir campanha/Floodlights e gerar arquivo de configuração em configs/
+python step0_setup_and_discover.py \
+  --campaign-id <CAMPAIGN_ID> \
+  --mode both \
+  --brand-name "Marca" \
+  --agency-name "Agencia" \
+  --purchase-activity-ids "ID_WEB,ID_ANDROID,ID_IOS"
 
-docker run -d --name ctv-compass -p 8080:8080 \
-  -e GOOGLE_CLIENT_ID="SEU_CLIENT_ID" \
-  -e GOOGLE_CLIENT_SECRET="SEU_CLIENT_SECRET" \
-  -e PUBLIC_BASE_URL="https://ctv.suaagencia.com.br" \
-  ctv-compass
-```
-*(Defina `PUBLIC_BASE_URL` sempre que o container estiver atrás de um proxy reverso HTTPS como Nginx, Cloudflare ou Load Balancer).*
+# 2. Extrair relatórios, computar métricas e renderizar HTML
+python run_pipeline.py --config configs/camp_<CAMPAIGN_ID>_both.json
 
-#### Opção 3 — Execução Local em Python
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-
-# Valida todos os motores matemáticos e rotas HTTP offline (~3s)
-python test_self_check.py
-
-# Inicia o portal em http://localhost:8080
-export GOOGLE_CLIENT_ID="SEU_CLIENT_ID"
-export GOOGLE_CLIENT_SECRET="SEU_CLIENT_SECRET"
-python web_app.py
+# Recalcular apenas metodologia e HTML reutilizando os CSVs já extraídos em outputs/
+python run_pipeline.py --config configs/camp_<CAMPAIGN_ID>_both.json --skip-extract
 ```
 
 ---
 
-## O Que Configurar Manualmente? (Na Tela vs. No Código)
+## Parâmetros Manuais e Pontos de Customização no Código
 
-Para evitar erros operacionais, veja abaixo **exatamente o que o usuário ajusta na interface a cada estudo** (sem mexer em código) e **quais premissas estão no código Python** caso a agência queira personalizar regras internas.
+### 1. Parâmetros Definidos por Execução (Sem Alteração de Código)
+Na interface web (`web_app.py`) ou no JSON de configuração (`configs/campaign.example.json`):
+- `profile_id` e `campaign_id`: perfil de usuário e campanha alvo no CM360.
+- `start_date` e `end_date`: janela de análise (`YYYY-MM-DD`), preenchida inicialmente com as datas da campanha.
+- `brand_name` e `agency_name`: rótulos textuais exibidos no cabeçalho dos slides.
+- `identification_mode`: `both` (padrão), `site` ou `device`.
+- `purchase_activity_ids`: lista de `Activity IDs` do Floodlight contabilizadas como conversão. Na UI, todas as atividades do anunciante são carregadas da API em checkboxes; selecione apenas **1 atividade transacional de compra por plataforma** (`Web`, `Android`, `iOS`), desmarcando pixels agregadores (que disparam em duplicidade no mesmo pedido), eventos de topo/meio de funil e tags de outras marcas que compartilhem o mesmo `floodlightConfigurationId`.
 
-### A. Ajustes Feitos Direto na Interface Web (Zero Edição de Código)
+### 2. Regras Hardcoded no Código (Quando Editar Manualmente)
 
-1. **Conta / Perfil CM360 e Campanha (Passo 1 na tela):**
-   * O usuário seleciona o `User Profile` e filtra a campanha pelo nome ou `Campaign ID` (a busca ignora maiúsculas, espaços e `_` underscores).
-2. **Nome da Marca / Título no Slide e Nome da Agência (Passo 1 na tela):**
-   * O campo **Nome da Marca** vem preenchido com o nome técnico da campanha no CM360 e **Nome da Agência** vem como `"Agência"`. Edite ambos na tela antes de rodar para que os títulos executivos dos 8 slides fiquem limpos para o cliente final.
-3. **Janela de Datas (`Data Início` e `Data Fim`):**
-   * Preenchida automaticamente com o período oficial da campanha no CM360 (limitada até a data de hoje), podendo ser recortada manualmente na tela.
-4. **Seleção das Tags Floodlight de Compra (Passo 2 na tela — CRÍTICO):**
-   * **Não é necessário editar código mesmo que o cliente use nomes diferentes de tags.** O Passo 2 lista todas as atividades Floodlight do anunciante com caixas de seleção (`checkboxes`).
-   * **Regra de ouro:** mantenha marcada **apenas 1 tag transacional oficial de compra por plataforma** (ex.: 1 de `Web`, 1 de `Android`, 1 de `iOS`). Desmarque sempre pixels agregadores/globais (que disparam junto com a tag de compra e duplicam a receita), tags de funil superior (`view_item`, `add_to_cart`, `lead`) e tags de **outras marcas** que compartilhem o mesmo anunciante/Floodlight Configuration no CM360.
+Caso a taxonomia ou a conta do anunciante divirja das premissas padrão, ajuste os trechos abaixo:
 
----
-
-### B. Pontos no Código Python que Exigem Edição Manual (Caso Fujam do Padrão)
-
-Se a operação do seu cliente tiver particularidades fora do padrão acima, estes são **todos os pontos do código** que podem ser editados manualmente:
-
-#### 1. Nome dos Sites na Visão 1 (`step2_compute_methodology.py`)
-* **Como funciona por padrão:** Na **Visão 1 (`Naming do Site`)**, o código identifica como CTV os veículos cujo `Site (CM360)` contenha a sigla `"ctv"` (linhas `315` e `324` de `step2_compute_methodology.py`).
-* **Quando você NÃO precisa mexer:** Se o veículo não tiver `"CTV"` no nome (ex.: `Netflix`, `Disney`, `Globoplay`, `Roku`), a **Visão 2 (`Device Type`)** já detecta automaticamente toda a entrega em `Connected TV` e `Set top box` e assume a abertura do relatório caso nenhum Site tenha `"CTV"` no nome.
-* **Quando editar manualmente:** Se a agência quiser que um parceiro sem `"CTV"` no nome entre também na **Visão 1** (ou se um parceiro de CTV for medido apenas por pixel `1x1` sem User-Agent estruturado, caindo em `Unknown platform` na Visão 2), edite o filtro nas linhas `315` e `324` de `step2_compute_methodology.py` (e o fallback na linha `714`):
+#### a) Critério de Nome de `Site` na Visão 1 (`step2_compute_methodology.py`)
+- **Padrão atual:** em `_compute_site_mode` (linhas `315` e `324`) e nos metadados de `_compute_device_mode` (linhas `714`, `751`, `852`, `915`), um `Site (CM360)` é marcado como CTV na Visão 1 se ` "ctv" in site.lower() `.
+- **Observação:** veículos sem `"CTV"` no nome que entreguem em `Connected TV` ou `Set top box` já são capturados automaticamente na Visão 2 (`device`). A edição manual só é necessária se você quiser incluí-los também na Visão 1 ou se o parceiro for mensurado apenas por pixel `1x1` sem User-Agent de TV (caindo em `Unknown platform` no CM360).
+- **Onde alterar (`step2_compute_methodology.py`, linhas `315` e `324`):**
   ```python
-  # Em step2_compute_methodology.py (linhas 315 e 324):
   CTV_SITE_KEYWORDS = ("ctv", "connectedtv", "smarttv", "ott", "netflix", "roku", "globoplay")
   df_sites["is_ctv"] = df_sites["Site (CM360)"].astype(str).str.lower().apply(
       lambda s: any(k in s for k in CTV_SITE_KEYWORDS)
   )
   ```
 
-#### 2. Sugestão Automática Inicial de Tags Floodlight (`common.py`)
-* **Como funciona por padrão:** A função `classify_tag()` em `common.py` (linhas `49–57`) define quais checkboxes já aparecem pré-marcados com o selo `"Recomendada"` na tela web (e quais tags são escolhidas automaticamente no modo CLI quando `--purchase-activity-ids` não é informado). Hoje ela busca `in_app_purchase` + `ios`/`android`, ou `comprafeita`, `purchase`, `ordercomplete`, `venda` (excluindo `pixelunico`).
-* **Como customizar:** Para adicionar o padrão de nomenclatura da sua agência (ex.: `"checkoutconfirmado"`, `"transacao"`), basta incluir os termos na tupla da linha `55` de `common.py`:
-  ```python
-  # Em common.py (linha 55):
-  if any(k in nlow for k in ("comprafeita", "purchase", "ordercomplete", "venda", "checkoutconfirmado")) and "pixelunico" not in nlow:
-  ```
+#### b) Heurística de Pré-Seleção de Tags Floodlight (`common.py`)
+- **Padrão atual:** `classify_tag()` (`common.py`, linhas `49–57`) define apenas quais atividades vêm pré-marcadas na UI (e na autodescoberta do `step0_setup_and_discover.py` quando `--purchase-activity-ids` é omitido). Busca `in_app_purchase` + `ios`/`android` ou substrings `("comprafeita", "purchase", "ordercomplete", "venda")`, excluindo `"pixelunico"`.
+- **Onde alterar (`common.py`, linha `55`):** adicione os tokens de compra adotados pela agência ou novos termos de exclusão para pixels globais.
 
-#### 3. Moeda (`R$`) e Formatação Numérica (`common.py`)
-* **Como funciona por padrão:** Os valores extraídos seguem a moeda configurada na conta do CM360 (`DV360 Cost (Account Currency)` / `Media Cost`), mas o símbolo impresso nos slides e gráficos está formatado em Reais (`R$`) na função `fmt_curr()` em `common.py` (linhas `105–112`) — e nos rótulos de eixo das linhas `395–397` de `step3_generate_html.py`.
-* **Como customizar:** Para contas em `USD` (`US$`), `EUR` (`€`) ou `MXN` (`MX$`), altere o prefixo `"R$"` em `fmt_curr()` no arquivo `common.py`.
+#### c) Moeda e Locale Numérico (`common.py` e `step3_generate_html.py`)
+- **Padrão atual:** os valores numéricos vêm na moeda da conta do CM360 (`DV360 Cost (Account Currency)` / `Media Cost`), porém `fmt_curr()` (`common.py`, linhas `105–112`) formata com prefixo `"R$"` e separadores `pt-BR` (`1.234,56`). Há também rótulos `"R$"` nos gráficos de `step3_generate_html.py` (linhas `395–397`).
+- **Onde alterar:** ajuste `fmt_curr()`, `fmt_dec()` e `fmt_int()` em `common.py` para contas operando em `USD`, `EUR` ou outras moedas.
 
-#### 4. Múltiplos `Campaign IDs` para o Mesmo Voo de Mídia (`step1` e `step2`)
-* **Como funciona por padrão:** Cada execução avalia **1 `Campaign ID`** do CM360. Se a agência dividiu uma mesma campanha em múltiplos IDs no CM360 (ex.: um `Campaign ID` Nacional + um `Campaign ID` Regional), o fluxo padrão gera 1 deck para cada `Campaign ID`.
-* **Como customizar (caso precise consolidar vários IDs em um único deck):**
-  1. Em `step1_extract_reports.py` (`_build_cm360_specs`, linhas `169–172`), passe múltiplos objetos `{"dimensionName": "campaign", "id": cid, "matchType": "EXACT"}` na lista `camp_filters` (no CM360 v5, filtros repetidos da mesma dimensão operam como `OR`).
-  2. Em `step2_compute_methodology.py` (linhas `109`, `291`, `298`, `552` e `566`), troque a comparação `== camp_id` por `.isin(lista_camp_ids)`.
+#### d) Agrupamento de Múltiplos `Campaign IDs` no Mesmo Estudo (`step1` e `step2`)
+- **Padrão atual:** o pipeline filtra um único `campaign_id` por execução.
+- **Onde alterar para consolidar múltiplos IDs:**
+  1. Em `step1_extract_reports.py` (`_build_cm360_specs`, linhas `169–172`), envie múltiplos dicionários `{"dimensionName": "campaign", "id": cid, "matchType": "EXACT"}` em `camp_filters` (filtros de mesma dimensão operam como `OR` na API v5).
+  2. Em `step2_compute_methodology.py` (linhas `109`, `291`, `298`, `552` e `566`), substitua `== camp_id` por `.isin(campaign_ids)`.
 
-#### 5. Limiares Metodológicos de Pureza e Amostra (`step2_compute_methodology.py`)
-* **`CTV_PLATFORM_NAMES`** (linha `27`): `{"Connected TV", "Set top box"}` (IDs `30004` e `30006` no CM360).
-* **`PURE_CTV_PLACEMENT_THRESHOLD = 0.95`** (linha `28`): exige ao menos `95%` de entrega em TV/STB em um Placement para tratá-lo como toque determinístico puro de TV no `Path to Conversion` (evitando contaminar a coorte com placements híbridos Mobile + TV).
-* **`MIN_MEANINGFUL_CTV_IMPS = 1000.0`** (linha `29`): na Visão Device, agrupa na linha `Residual` os Sites com menos de `1.000` impressões em Smart TV.
-* **Amostra mínima de `5` conversões multi-toque** (linhas `188`, `371`, `779`): veículos com menos de `5` conversões observadas em jornadas multi-canal usam como fallback conservador o lift médio do bloco CTV da própria campanha (e canais multi-tela com `"youtube"` no nome herdam o benchmark do canal `YouTube CTV` puro da mesma campanha nas linhas `781–797`).
+#### e) Constantes e Limiares Metodológicos (`step2_compute_methodology.py`)
+- `CTV_PLATFORM_NAMES` (linha `27`): `{"Connected TV", "Set top box"}` (IDs `30004` e `30006`).
+- `PURE_CTV_PLACEMENT_THRESHOLD = 0.95` (linha `28`): fração mínima de impressões em TV/STB exigida para classificar um `Placement ID` como toque determinístico puro de CTV no `Path to Conversion`.
+- `MIN_MEANINGFUL_CTV_IMPS = 1000.0` (linha `29`): volume mínimo de impressões em TV/STB para exibir o Site individualmente na Visão Device (abaixo disso, agrupa em `Residual`).
+- Limiar mínimo de amostra `>= 5` conversões multi-toque (linhas `188`, `371`, `779`): abaixo de 5 conversões observadas no P2C, o canal utiliza o lift consolidado do bloco CTV da campanha (ou o benchmark de `youtubectv` da mesma campanha para canais contendo `"youtube"`, linhas `781–797`). Canais contendo `"search"` no nome são sempre tratados como não-CTV (`linha 706`).
 
-#### 6. Reconciliação Opcional Direta com a API do DV360 (Modo CLI)
-* Na interface web (`web_app.py`, linha `196`), o pipeline opera em modo **100% CM360** (`"dv360": {"enabled": False}`), lendo o custo diretamente de `DV360 Cost` e `Media Cost` no CM360.
-* Caso deseje cruzar também Insertion Orders e Line Items diretamente na API do DV360, utilize o modo de linha de comando abaixo passando `--dv360-advertiser-id` ou editando um JSON baseado em `configs/campaign.example.json`.
+#### f) Enriquecimento Opcional via API DV360 (`configs/campaign.example.json`)
+- No `web_app.py` (linha `198`), `dv360.enabled` permanece `False` e o custo vem integralmente do CM360. Para habilitar a extração complementar por Insertion Order / Line Item na API do DV360, defina `"enabled": true`, `advertiser_id` e `campaign_id` no bloco `dv360` do JSON e execute via `run_pipeline.py`.
 
 ---
 
-## Uso Opcional via Linha de Comando (CLI)
-
-Além do Portal Web, todo o motor pode ser executado via terminal ou automações:
-
-```bash
-# 1. Descobrir metadados da campanha e gerar o JSON de configuração:
-python step0_setup_and_discover.py \
-  --campaign-id <CAMPAIGN_ID> \
-  --mode both \
-  --brand-name "Nome da Marca — Campanha" \
-  --agency-name "Nome da Agência" \
-  --purchase-activity-ids "ID_WEB,ID_ANDROID,ID_IOS"
-
-# 2. Executar extração CM360 + cálculo das 5 travas + geração do deck HTML:
-python run_pipeline.py --config configs/camp_<CAMPAIGN_ID>_both.json
-
-# Dica: para recalcular apenas a metodologia/HTML sobre CSVs já baixados:
-python run_pipeline.py --config configs/camp_<CAMPAIGN_ID>_both.json --skip-extract
-```
-
----
-
-## Estrutura do Repositório
+## Estrutura de Arquivos
 
 ```text
 .
-├── web_app.py                    # Portal web auto-hospedado (Login OAuth2 / Service Account + SSE)
-├── common.py                     # Utilitários OAuth2, classificação Floodlight, parsers CM360/P2C e moeda
-├── step0_setup_and_discover.py   # CLI opcional de autodescoberta de campanha e tags Floodlight
-├── step1_extract_reports.py      # Extração paralela de relatórios CM360 v5 (+ DV360 opcional)
-├── step2_compute_methodology.py  # Motor matemático CTV ('site', 'device' e 'both') + 5 Travas assert
-├── step3_generate_html.py        # Gerador da apresentação executiva HTML interativa + 3 infográficos PNG
-├── run_pipeline.py               # Orquestrador CLI do estudo executivo de CTV
-├── test_self_check.py            # Auto-teste offline (modos 'site', 'device', 'both' + Servidor Web)
+├── web_app.py                    # Servidor HTTP (ThreadingHTTPServer), OAuth2/Service Account e stream SSE
+├── common.py                     # Helpers de autenticação, parsers CSV do CM360/P2C e formatação
+├── step0_setup_and_discover.py   # Descoberta via API de metadados da campanha e Floodlight Activities
+├── step1_extract_reports.py      # Criação, polling e download de relatórios CM360 v5 (e DV360 opcional)
+├── step2_compute_methodology.py  # Cálculo de alcance/atribuição ('site', 'device', 'both') e asserts de reconciliação
+├── step3_generate_html.py        # Geração dos gráficos (matplotlib) e renderização do HTML autocontido
+├── run_pipeline.py               # Entrypoint CLI (encadeia step1 -> step2 -> step3)
+├── test_self_check.py            # Testes offline com fixtures sintéticas para os 3 modos e endpoints HTTP
 ├── configs/
-│   └── campaign.example.json     # Modelo comentado de configuração para execução via CLI
-├── Dockerfile                    # Imagem pronta para Cloud Run / Docker (usuário não-root)
-└── requirements.txt              # Dependências enxutas (pandas, numpy, matplotlib, google-api, oauth)
+│   └── campaign.example.json     # Exemplo de payload de configuração para uso via CLI
+├── Dockerfile                    # Build Python 3.12-slim (usuário não-root, porta 8080)
+└── requirements.txt              # Dependências Python
 ```
-
----
-
-## Governança Metodológica & Privacidade
-
-* **Higiene de Floodlight:** Selecione sempre **1 tag transacional oficial de compra por plataforma** (`Web`, `Android`, `iOS`), evitando somar pixels agregadores que disparam no mesmo pedido.
-* **Rigor Financeiro:** Superar `1,0x` de ROAS significa gerar mais receita atribuída pela metodologia do que o custo de mídia investido no veículo (não equivale a lucro líquido contábil, pois não desconta CMV, impostos ou frete).
-* **Segurança:** Credenciais (`client_secrets*.json`, `token*.json`, `service_account*.json`, `.env`) e dados brutos/relatórios (`*.csv`, `*.html`, `*.png`, `outputs/`, `configs/*.json`) estão bloqueados no `.gitignore` e no `.dockerignore` para nunca serem enviados ao GitHub.

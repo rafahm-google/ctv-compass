@@ -38,7 +38,7 @@ from step1_extract_reports import extract_reports
 from step2_compute_methodology import compute_methodology
 from step3_generate_html import generate_html_report
 
-# ponytail: global matplotlib lock, pyplot state isn't thread-safe across concurrent renders (<0.5s each)
+# pyplot state isn't thread-safe across concurrent renders
 _PLOT_LOCK = threading.Lock()
 _STATE_LOCK = threading.Lock()
 _OAUTH_STATES: dict[str, dict] = {}
@@ -318,19 +318,19 @@ INDEX_HTML = """<!DOCTYPE html>
 
 <div class="container">
   <div id="unconfiguredCard" class="card hidden">
-    <h2>⚙️ Configuração da API CM360 no Servidor (Time Técnico / BI da Agência)</h2>
-    <p class="sub">Esta instância ainda não possui as credenciais de conexão com a API do Campaign Manager 360 configuradas no ambiente.</p>
+    <h2>Configuração da API CM360 no Servidor</h2>
+    <p class="sub">Esta instância não possui credenciais da API do Campaign Manager 360 configuradas no ambiente.</p>
     <div class="banner warn">
-      Defina <b>GOOGLE_CLIENT_ID</b> e <b>GOOGLE_CLIENT_SECRET</b> (para login individual com botão Google)
-      ou <b>CM360_CREDENTIALS_JSON</b> / <b>CM360_CREDENTIALS_FILE</b> (para conta de serviço centralizada) e reinicie o serviço.
-      Consulte o <b>README.md</b> para o passo a passo completo.
+      Defina <b>GOOGLE_CLIENT_ID</b> e <b>GOOGLE_CLIENT_SECRET</b> (OAuth 2.0 Web Client)
+      ou <b>CM360_CREDENTIALS_JSON</b> / <b>CM360_CREDENTIALS_FILE</b> (Service Account) e reinicie o serviço.
+      Consulte o <b>README.md</b> para instruções de configuração.
     </div>
   </div>
 
   <div id="loginCard" class="card hidden" style="text-align:center;padding:44px 28px;">
-    <h2 style="justify-content:center;font-size:22px;">Conecte sua Conta do CM360</h2>
-    <p class="sub" style="max-width:520px;margin:8px auto 24px;">Entre com o seu e-mail que possui acesso ao Campaign Manager 360 do cliente para listar automaticamente as campanhas e gerar sua apresentação executiva.</p>
-    <a class="btn primary" href="/auth/login">🔑 Entrar com Google</a>
+    <h2 style="justify-content:center;font-size:22px;">Autenticação CM360</h2>
+    <p class="sub" style="max-width:520px;margin:8px auto 24px;">Autentique-se com uma conta Google que possua User Profile ativo no Campaign Manager 360.</p>
+    <a class="btn primary" href="/auth/login">Entrar com Google</a>
   </div>
 
   <div id="appWorkspace" class="hidden">
@@ -390,10 +390,10 @@ INDEX_HTML = """<!DOCTYPE html>
     </div>
 
     <div class="card" style="margin-top:20px;">
-      <h2><span class="step-pill">3</span> Gerar Apresentação Executiva</h2>
-      <p class="sub">Extrai os relatórios oficiais no CM360, aplica as 5 travas matemáticas e monta o deck interativo de 8 slides.</p>
+      <h2><span class="step-pill">3</span> Executar Pipeline</h2>
+      <p class="sub">Extrai os relatórios no CM360, valida as invariantes matemáticas e gera o relatório HTML.</p>
       <div id="errorBanner" class="banner err hidden"></div>
-      <button id="runBtn" class="btn primary" onclick="startJob()">🚀 Gerar Apresentação Executiva</button>
+      <button id="runBtn" class="btn primary" onclick="startJob()">Gerar Relatório</button>
 
       <div id="progressArea" class="hidden" style="margin-top:18px;">
         <div id="stepLabel" style="font-weight:700;color:var(--blue);font-size:14px;">Iniciando...</div>
@@ -404,8 +404,8 @@ INDEX_HTML = """<!DOCTYPE html>
         <div class="banner ok" id="roasBanner"></div>
         <div class="kpi-grid" id="kpiGrid"></div>
         <div style="display:flex;gap:12px;flex-wrap:wrap;">
-          <a id="downloadBtn" class="btn green" href="#">⬇️ Baixar Apresentação (.html)</a>
-          <a id="openTabBtn" class="btn" href="#" target="_blank" rel="noopener">🖥️ Abrir em Nova Aba / Salvar PDF</a>
+          <a id="downloadBtn" class="btn green" href="#">Baixar HTML</a>
+          <a id="openTabBtn" class="btn" href="#" target="_blank" rel="noopener">Abrir em Nova Aba / Imprimir PDF</a>
         </div>
         <iframe id="reportPreview" class="preview"></iframe>
       </div>
@@ -439,9 +439,9 @@ async function initApp() {
       return;
     }
     if (boot.auth_mode === 'oauth_web') {
-      document.getElementById('authHeader').innerHTML = '<a class="btn" href="/auth/logout" style="padding:7px 16px;font-size:12.5px;">Sair da Conta</a>';
+      document.getElementById('authHeader').innerHTML = '<a class="btn" href="/auth/logout" style="padding:7px 16px;font-size:12.5px;">Sair</a>';
     } else {
-      document.getElementById('authHeader').innerHTML = '<span style="font-size:12.5px;color:var(--green);font-weight:700;">● API CM360 Conectada</span>';
+      document.getElementById('authHeader').innerHTML = '<span style="font-size:12.5px;color:var(--green);font-weight:700;">API CM360 Conectada</span>';
     }
     document.getElementById('appWorkspace').classList.remove('hidden');
 
@@ -594,7 +594,7 @@ function renderResult(jobId, s) {
   const note = s.roas_positive
     ? ' — supera 1,0x de ROAS (gera mais receita atribuída do que o custo de mídia investido no veículo)'
     : '';
-  document.getElementById('roasBanner').innerHTML = `<b>✅ Estudo concluído (${esc(s.brand_name)} — ${esc(s.mode)})!</b> Apresentação auditada nas 5 travas matemáticas${esc(note)}${esc(s.extra_note || '')}.`;
+  document.getElementById('roasBanner').innerHTML = `<b>Concluído (${esc(s.brand_name)} — ${esc(s.mode)}).</b> Relatório validado${esc(note)}${esc(s.extra_note || '')}.`;
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi"><div class="k-lbl">Investimento CTV</div><div class="k-val">${esc(s.cost)}</div><div class="k-sub">${esc(s.cost_share)} da campanha</div></div>
     <div class="kpi"><div class="k-lbl">Compras Atribuídas</div><div class="k-val">${esc(s.conversions)}</div><div class="k-sub">${esc(s.conv_share)} do total P2C</div></div>

@@ -155,7 +155,7 @@ def read_p2c_csv(path) -> pd.DataFrame:
 
 
 def execute_with_retry(req_fn, retries: int = 5, base_sleep: float = 2.0):
-    # ponytail: CM360 v5 returns transient 500/503s when running 6-13 REACH/P2C reports concurrently
+    # CM360 v5 returns transient 500/503s when running multiple REACH/P2C reports concurrently
     for attempt in range(retries):
         try:
             return req_fn().execute()
