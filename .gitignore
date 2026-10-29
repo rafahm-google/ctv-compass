@@ -1,0 +1,30 @@
+# OAuth2 credentials, service accounts & tokens (NEVER commit)
+client_secrets*.json
+credentials*.json
+service_account*.json
+token*.json
+tokens/
+config.ini
+.env
+.env.*
+
+# Client-specific campaign configurations & extracted raw reports/outputs
+outputs/
+*.csv
+*.html
+*.png
+configs/*.json
+!configs/campaign.example.json
+
+# Python virtualenvs & caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# IDEs & OS files
+.vscode/
+.idea/
+.DS_Store

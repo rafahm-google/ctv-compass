@@ -1,0 +1,37 @@
+{
+  "case_slug": "minha_campanha_ctv",
+  "brand_name": "Marca Exemplo — Lançamento",
+  "agency_name": "Nome da Agência",
+  "identification_mode": "both",
+  "cm360": {
+    "profile_id": "SEU_CM360_PROFILE_ID",
+    "account_id": "SEU_CM360_ACCOUNT_ID",
+    "advertiser_id": "SEU_CM360_ADVERTISER_ID",
+    "floodlight_config_id": "SEU_FLOODLIGHT_CONFIG_ID",
+    "campaign_id": "SEU_CM360_CAMPAIGN_ID",
+    "campaign_name": "Anunciante|Agencia|Campanha_Exemplo",
+    "brand_keyword_normalized": "campanhaexemplo",
+    "token_reporting_path": "token.json",
+    "purchase_activity_ids": [
+      "ID_FLOODLIGHT_COMPRA_WEB",
+      "ID_FLOODLIGHT_IN_APP_PURCHASE_IOS",
+      "ID_FLOODLIGHT_IN_APP_PURCHASE_ANDROID"
+    ],
+    "purchase_activity_labels": {
+      "ID_FLOODLIGHT_COMPRA_WEB": "Web (Compra Confirmada)",
+      "ID_FLOODLIGHT_IN_APP_PURCHASE_IOS": "iOS (in_app_purchase)",
+      "ID_FLOODLIGHT_IN_APP_PURCHASE_ANDROID": "Android (in_app_purchase)"
+    }
+  },
+  "dv360": {
+    "enabled": false,
+    "advertiser_id": "",
+    "campaign_id": "",
+    "token_dv360_path": "token_dv360.json"
+  },
+  "date_window": {
+    "start_date": "2026-09-01",
+    "end_date": "2026-10-15"
+  },
+  "output_dir": "outputs/minha_campanha_ctv"
+}

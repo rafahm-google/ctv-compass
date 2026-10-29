@@ -1,0 +1,10 @@
+.git
+__pycache__/
+*.pyc
+outputs/
+*.csv
+token*.json
+client_secrets*.json
+service_account*.json
+configs/*.json
+!configs/campaign.example.json
