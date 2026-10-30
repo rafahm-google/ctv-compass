@@ -31,10 +31,12 @@ Camp_Test,999,DV360_YoutubeCTV,P1,10,50000,0,1000.00,800.00
 Camp_Test,999,DV360-DemandGen,P2,20,40000,500,500.00,400.00
 """)},
                 "std_floodlight_activities": {"path": _write_cm_csv(raw / "s_fl.csv", """
-Campaign,Campaign ID,Site (CM360),Activity Group,Activity,Activity ID,Total Conversions,Total Revenue,View-through Conversions,Click-through Conversions
-Camp_Test,999,DV360_YoutubeCTV,G,Purchase,101,5,1000.00,5,0
-Camp_Test,999,DV360_YoutubeCTV,G,DuplicatePixel,999,5,1000.00,5,0
-Camp_Test,999,DV360-DemandGen,G,Purchase,101,45,6750.00,15,30
+Campaign,Campaign ID,Site (CM360),Attributed Event Platform Type,Activity Group,Activity,Activity ID,Total Conversions,Total Revenue,View-through Conversions,Click-through Conversions
+Camp_Test,999,DV360_YoutubeCTV,Connected TV,G,Purchase,101,5,1000.00,5,0
+Camp_Test,999,DV360_YoutubeCTV,Connected TV,G,View_Item,102,250,0.00,250,0
+Camp_Test,999,DV360_YoutubeCTV,Connected TV,G,DuplicatePixel,999,5,1000.00,5,0
+Camp_Test,999,DV360-DemandGen,Smartphone,G,Purchase,101,45,6750.00,15,30
+Camp_Test,999,DV360-DemandGen,Smartphone,G,View_Item,102,4500,0.00,1500,3000
 """)},
                 "reach_campaign_total": {"path": _write_cm_csv(raw / "s_rtot.csv", """
 Campaign,Unique Reach: Impression Reach,Unique Reach: Impression Reach (Co-Viewed),Unique Reach: Average Impression Frequency,Unique Reach: Average Impression Frequency (Co-Viewed)
@@ -80,6 +82,7 @@ Camp_Test,DV360-DemandGen,600,66.67,300,33.33
                 "profile_id": "1", "account_id": "1", "advertiser_id": "1", "floodlight_config_id": "1",
                 "campaign_id": "999", "campaign_name": "Camp_Test", "brand_keyword_normalized": "camptest",
                 "purchase_activity_ids": ["101"], "purchase_activity_labels": {"101": "Web Purchase"},
+                "product_activity_ids": ["102"], "product_activity_labels": {"102": "Web Produto (View_Item)"},
             },
             "dv360": {"enabled": False},
             "date_window": {"start_date": "2026-09-01", "end_date": "2026-09-30"},
@@ -92,10 +95,13 @@ Camp_Test,DV360-DemandGen,600,66.67,300,33.33
         res_site = json.loads(Path(res_site_path).read_text(encoding="utf-8"))
         b_site = res_site["ctv_block_consolidated"]
         assert abs(res_site["campaign_totals"]["std_conversions"] - 50.0) < 1e-6, "Duplicate Floodlight 999 leaked!"
+        assert res_site["funnel_cvr_efficiency"]["metric_source"] == "cvr_produto_compra"
+        assert abs(res_site["funnel_cvr_efficiency"]["ctv_block"]["capped_afe_pct"] - 50.0) < 1e-6
         assert abs(b_site["total_attributed_conversions"] - 2.65) < 1e-6, f"Unexpected site convs: {b_site['total_attributed_conversions']}"
         assert abs(b_site["total_attributed_revenue"] - 530.0) < 1e-6, f"Unexpected site rev: {b_site['total_attributed_revenue']}"
         html_site = Path(generate_html_report(str(cfg_path), mode_override="site"))
         assert html_site.exists() and html_site.stat().st_size > 10_000
+        assert "economia de toques" not in html_site.read_text(encoding="utf-8").lower()
 
         # 2. Device-mode synthetic fixtures (Inclusion-Exclusion: |CTV|=500 + |NonCTV|=800 - |U|=1000 => Exact Overlap = 300; click-tracker P3 = 0 imp / 100 clicks)
         m_dev = {
@@ -119,6 +125,17 @@ Campaign,Campaign ID,Site (CM360),Placement,Placement ID,Platform Type,Activity 
 Camp_Test,999,DV360_YoutubeCTV,P1,10,Smartphone,G,Purchase,101,5,1000.00,5,0
 Camp_Test,999,DV360-DemandGen,P2,20,Smartphone,G,Purchase,101,40,6000.00,16,24
 Camp_Test,999,Partner_ClickTracker,P3,30,Desktop,G,Purchase,101,5,750.00,0,5
+""")},
+                "std_event_platform_floodlights": {"path": _write_cm_csv(raw / "d_ev_fl.csv", """
+Campaign,Campaign ID,Site (CM360),Attributed Event Platform Type,Activity Group,Activity,Activity ID,Total Conversions,Total Revenue,View-through Conversions,Click-through Conversions
+Camp_Test,999,DV360_YoutubeCTV,Connected TV,G,Purchase,101,5,1000.00,5,0
+Camp_Test,999,DV360_YoutubeCTV,Connected TV,G,View_Item,102,200,0.00,200,0
+Camp_Test,999,DV360-DemandGen,Connected TV,G,Purchase,101,10,1500.00,10,0
+Camp_Test,999,DV360-DemandGen,Connected TV,G,View_Item,102,300,0.00,300,0
+Camp_Test,999,DV360-DemandGen,Smartphone,G,Purchase,101,30,4500.00,6,24
+Camp_Test,999,DV360-DemandGen,Smartphone,G,View_Item,102,3000,0.00,1000,2000
+Camp_Test,999,Partner_ClickTracker,Smartphone,G,Purchase,101,5,750.00,0,5
+Camp_Test,999,Partner_ClickTracker,Smartphone,G,View_Item,102,500,0.00,0,500
 """)},
                 "reach_campaign_total": m_site["cm360_reports"]["reach_campaign_total"],
                 "reach_by_platform": {"path": _write_cm_csv(raw / "d_rplat.csv", """
@@ -163,10 +180,14 @@ DV360-DemandGen,800,800,3.5
         ie = res_dev["exact_inclusion_exclusion_block"]
         assert abs(b_dev["cost"] - 1200.0) < 1e-6
         assert abs(b_dev["std_conversions"] - 15.0) < 1e-6
+        assert res_dev["meta"]["has_event_platform_type"] is True
+        assert res_dev["funnel_cvr_efficiency"]["ctv_block"]["cap_applied"] is True
+        assert abs(res_dev["funnel_cvr_efficiency"]["ctv_block"]["capped_afe_pct"] - 50.0) < 1e-6
         assert abs(ie["exact_cross_device_overlap_1plus"] - 300.0) < 1e-6
         assert abs(b_dev["duplicate_reach_1plus_sum"] - 300.0) < 1e-6
         html_dev = Path(generate_html_report(str(cfg_path), mode_override="device"))
         assert html_dev.exists() and html_dev.stat().st_size > 10_000
+        assert "economia de toques" not in html_dev.read_text(encoding="utf-8").lower()
 
         # 3. Unified 'both' mode WITH 'CTV' site naming
         (root / "extraction_manifest.json").unlink(missing_ok=True)
@@ -175,13 +196,19 @@ DV360-DemandGen,800,800,3.5
         both_txt = html_both.read_text(encoding="utf-8")
         assert "let activeDeck = 0," in both_txt and "switchDeck(1)" in both_txt
         assert "TOTAL BLOCO CTV RECONCILIADO" in both_txt
+        assert "economia de toques" not in both_txt.lower()
 
-        # 4. Unified 'both' mode WITHOUT 'CTV' site naming (auto-activates Deck 1 Device Type)
+        # 4. Unified 'both' mode WITHOUT 'CTV' site naming + fallback without product tags
         for p in raw.glob("*.csv"):
-            p.write_text(p.read_text(encoding="utf-8").replace("DV360_YoutubeCTV", "DV360-YouTubeVideo"), encoding="utf-8")
+            txt = "\n".join(ln for ln in p.read_text(encoding="utf-8").splitlines() if ",View_Item,102," not in ln)
+            p.write_text(txt.replace("DV360_YoutubeCTV", "DV360-YouTubeVideo"), encoding="utf-8")
+        cfg["cm360"]["product_activity_ids"] = []
+        cfg["cm360"]["product_activity_labels"] = {}
+        cfg_path.write_text(json.dumps(cfg), encoding="utf-8")
         compute_methodology(str(cfg_path), mode_override="both")
         res_site_noname = json.loads((root / "methodology_results.json").read_text(encoding="utf-8"))
         assert res_site_noname["meta"]["naming_detected"] is False
+        assert res_site_noname["funnel_cvr_efficiency"]["metric_source"] == "fallback_aov_lift_sem_tag_produto"
         html_both_noname = Path(generate_html_report(str(cfg_path), mode_override="both"))
         noname_txt = html_both_noname.read_text(encoding="utf-8")
         assert "let activeDeck = 1," in noname_txt and "Validação Automática por Device Type Ativada" in noname_txt

@@ -27,6 +27,7 @@ from common import (
     CM360_SCOPES,
     DEFAULT_CTV_PLATFORMS,
     DEFAULT_NON_CTV_PLATFORMS,
+    classify_product_tag,
     classify_tag,
     fmt_curr,
     fmt_dec,
@@ -170,6 +171,7 @@ def _run_pipeline_job(job_id: str, creds, payload: dict):
         slug = f"camp_{camp_id}_{mode}"
         out_dir = work_dir / "output"
         act_map = payload["activities"]
+        prod_map = payload.get("product_activities") or {}
 
         cfg = {
             "case_slug": slug,
@@ -187,6 +189,8 @@ def _run_pipeline_job(job_id: str, creds, payload: dict):
                 "token_reporting_path": str(tok_path),
                 "purchase_activity_ids": list(act_map.keys()),
                 "purchase_activity_labels": act_map,
+                "product_activity_ids": list(prod_map.keys()),
+                "product_activity_labels": prod_map,
             },
             "dv360": {"enabled": False},
             "date_window": {"start_date": payload["start_date"], "end_date": payload["end_date"]},
@@ -384,9 +388,18 @@ INDEX_HTML = """<!DOCTYPE html>
     </div>
 
     <div class="card" style="margin-top:20px;">
-      <h2><span class="step-pill">2</span> Revisar Conversões de Compra (Floodlight)</h2>
-      <p class="sub">Mantenha marcada apenas <b>1 tag transacional oficial de compra por plataforma</b> (Web, Android e iOS) para evitar duplicidade de receita.</p>
-      <div id="tagsContainer" class="tag-list">Carregando conversões da campanha...</div>
+      <h2><span class="step-pill">2</span> Revisar Tags Floodlight (Compra &amp; Visualização de Produto)</h2>
+      <p class="sub">Selecione <b>1 tag transacional oficial de compra</b> e <b>1 tag de visualização de produto por plataforma</b> (Web, Android e iOS) para apurar o funil <code>CVR Produto → Compra</code> (com fallback automático caso não existam tags de produto).</p>
+      <div class="grid-2" style="margin-bottom:0;">
+        <div>
+          <label>1. Tags de Compra Oficial (1 por Plataforma)</label>
+          <div id="tagsContainer" class="tag-list">Carregando conversões da campanha...</div>
+        </div>
+        <div>
+          <label>2. Tags de Visualização de Produto — Denominador do CVR (Opcional)</label>
+          <div id="prodTagsContainer" class="tag-list">Carregando tags de produto...</div>
+        </div>
+      </div>
     </div>
 
     <div class="card" style="margin-top:20px;">
@@ -472,6 +485,7 @@ async function loadCampaigns() {
   if (!data.campaigns.length) {
     cSel.innerHTML = '<option value="">Nenhuma campanha encontrada</option>';
     document.getElementById('tagsContainer').innerHTML = '<i>Nenhuma campanha selecionada.</i>';
+    document.getElementById('prodTagsContainer').innerHTML = '<i>Nenhuma campanha selecionada.</i>';
     return;
   }
   cSel.innerHTML = data.campaigns.map(c => `<option value="${esc(c.id)}">${esc(c.name)} (${esc(c.startDate || '')} a ${esc(c.endDate || '')})</option>`).join('');
@@ -483,7 +497,9 @@ async function loadCampaignDetails() {
   const campId = document.getElementById('campaignSelect').value;
   if (!campId) return;
   const tagsBox = document.getElementById('tagsContainer');
+  const prodBox = document.getElementById('prodTagsContainer');
   tagsBox.innerHTML = 'Carregando tags Floodlight do anunciante...';
+  prodBox.innerHTML = 'Carregando tags de produto...';
   const d = await apiGet(`/api/campaign_details?profile_id=${profId}&campaign_id=${campId}`);
   window._currentCampMeta = d;
   document.getElementById('brandInput').value = d.campaign_name;
@@ -491,13 +507,23 @@ async function loadCampaignDetails() {
   document.getElementById('endInput').value = d.end_date;
   if (!d.activities.length) {
     tagsBox.innerHTML = '<i>Nenhuma tag Floodlight encontrada para este anunciante.</i>';
+    prodBox.innerHTML = '<i>Nenhuma tag Floodlight encontrada para este anunciante.</i>';
     return;
   }
-  tagsBox.innerHTML = d.activities.map(a => `
+  const purcList = [...d.activities].sort((a, b) => (b.recommended ? 1 : 0) - (a.recommended ? 1 : 0) || a.name.localeCompare(b.name));
+  tagsBox.innerHTML = purcList.map(a => `
     <label class="tag-item">
       <input type="checkbox" class="fl-check" value="${esc(a.id)}" data-label="${esc(a.label)}" ${a.recommended ? 'checked' : ''}>
       <span>${esc(a.name)}</span>
       ${a.recommended ? '<span class="tag-badge">Recomendada</span>' : ''}
+    </label>
+  `).join('');
+  const prodList = [...d.activities].sort((a, b) => (b.product_recommended ? 1 : 0) - (a.product_recommended ? 1 : 0) || a.name.localeCompare(b.name));
+  prodBox.innerHTML = prodList.map(a => `
+    <label class="tag-item">
+      <input type="checkbox" class="fl-prod-check" value="${esc(a.id)}" data-label="${esc(a.product_label || a.label)}" ${a.product_recommended ? 'checked' : ''}>
+      <span>${esc(a.name)}</span>
+      ${a.product_recommended ? '<span class="tag-badge">Recomendada</span>' : ''}
     </label>
   `).join('');
 }
@@ -513,6 +539,10 @@ async function startJob() {
   }
   const activities = {};
   checks.forEach(c => { activities[c.value] = c.dataset.label; });
+  const productActivities = {};
+  Array.from(document.querySelectorAll('.fl-prod-check:checked')).forEach(c => {
+    productActivities[c.value] = c.dataset.label;
+  });
   const meta = window._currentCampMeta || {};
   const payload = {
     profile_id: document.getElementById('profileSelect').value,
@@ -526,7 +556,8 @@ async function startJob() {
     mode: document.getElementById('modeSelect').value,
     start_date: document.getElementById('startInput').value,
     end_date: document.getElementById('endInput').value,
-    activities: activities
+    activities: activities,
+    product_activities: productActivities
   };
 
   document.getElementById('runBtn').disabled = true;
@@ -796,7 +827,15 @@ class CTVWebHandler(BaseHTTPRequestHandler):
             for a in acts:
                 aid, aname = str(a.get("id")), a.get("name", "")
                 rec, lbl = classify_tag(aname)
-                items.append({"id": aid, "name": aname, "recommended": rec, "label": lbl})
+                prec, plbl = classify_product_tag(aname)
+                items.append({
+                    "id": aid,
+                    "name": aname,
+                    "recommended": rec,
+                    "label": lbl,
+                    "product_recommended": prec,
+                    "product_label": plbl,
+                })
             items.sort(key=lambda x: (0 if x["recommended"] else 1, x["name"].lower()))
             today_iso = datetime.date.today().isoformat()
             return self._send_json(200, {

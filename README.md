@@ -3,9 +3,9 @@
 Serviço HTTP e pipeline CLI em Python para mensuração de campanhas de Connected TV (CTV) sobre a API do Campaign Manager 360 (`dfareporting` v5).
 
 O pipeline extrai e reconcilia três relatórios do CM360 na mesma janela de datas e `Campaign ID`:
-1. `STANDARD`: custo (`DV360 Cost` / `Media Cost`), `Platform Type` e conversões de último toque (`Click-Through` e `View-Through`).
+1. `STANDARD`: custo (`DV360 Cost` / `Media Cost`), `Platform Type`, `Attributed Event Platform Type` (`eventPlatformType`), conversões de último toque (`Click-Through` e `View-Through`) e visualizações de produto oficiais para apurar o funil `CVR Produto -> Compra` (`AF_e`, limitado ao teto simétrico de `50%`).
 2. `REACH`: `Unique Reach` deduplicado, `Co-Viewed Reach` e sobreposição cross-channel / cross-device (`Duplicate Impression Reach`).
-3. `PATH_TO_CONVERSION`: jornadas deduplicadas por `Conversion ID`, vendas solo, toques médios até a conversão e ticket médio (`AOV`).
+3. `PATH_TO_CONVERSION`: jornadas deduplicadas por `Conversion ID`, vendas solo e expansão de ticket médio (`AOV`).
 
 Por padrão (`identification_mode="both"`), a saída é um arquivo HTML único autocontido (imagens renderizadas em `matplotlib` embutidas em Base64) com duas visões comutáveis:
 - `site`: classifica CTV pelo nome do `Site (CM360)`.
@@ -94,7 +94,8 @@ python step0_setup_and_discover.py \
   --mode both \
   --brand-name "Marca" \
   --agency-name "Agencia" \
-  --purchase-activity-ids "ID_WEB,ID_ANDROID,ID_IOS"
+  --purchase-activity-ids "ID_WEB,ID_ANDROID,ID_IOS" \
+  --product-activity-ids "PROD_ID_WEB,PROD_ID_ANDROID,PROD_ID_IOS"
 
 # 2. Extrair relatórios, computar métricas e renderizar HTML
 python run_pipeline.py --config configs/camp_<CAMPAIGN_ID>_both.json
@@ -114,15 +115,16 @@ Na interface web (`web_app.py`) ou no JSON de configuração (`configs/campaign.
 - `brand_name` e `agency_name`: rótulos textuais exibidos no cabeçalho dos slides.
 - `identification_mode`: `both` (padrão), `site` ou `device`.
 - `purchase_activity_ids`: lista de `Activity IDs` do Floodlight contabilizadas como conversão. Na UI, todas as atividades do anunciante são carregadas da API em checkboxes; selecione apenas **1 atividade transacional de compra por plataforma** (`Web`, `Android`, `iOS`), desmarcando pixels agregadores (que disparam em duplicidade no mesmo pedido), eventos de topo/meio de funil e tags de outras marcas que compartilhem o mesmo `floodlightConfigurationId`.
+- `product_activity_ids`: lista opcional de `Activity IDs` de visualização de produto (`1 por plataforma`: `Web`, `Android`, `iOS`) usada como denominador da taxa de conversão pós-visualização de produto (`CVR Produto -> Compra = Compras Oficiais / Views de Produto Oficiais`) para calcular a Fração Atribuível entre Expostos (`AF_e = min(50%, max(0%, (CVR_CTV - CVR_NonCTV) / CVR_CTV))`). Caso o anunciante não possua tags de produto (`nonctv_prod == 0`), o pipeline aplica fallback automático conservador pelo ganho relativo de `AOV` limitado a `50%`.
 
 ### 2. Regras Hardcoded no Código (Quando Editar Manualmente)
 
 Caso a taxonomia ou a conta do anunciante divirja das premissas padrão, ajuste os trechos abaixo:
 
 #### a) Critério de Nome de `Site` na Visão 1 (`step2_compute_methodology.py`)
-- **Padrão atual:** em `_compute_site_mode` (linhas `315` e `324`) e nos metadados de `_compute_device_mode` (linhas `714`, `751`, `852`, `915`), um `Site (CM360)` é marcado como CTV na Visão 1 se ` "ctv" in site.lower() `.
+- **Padrão atual:** em `_compute_site_mode` (linhas `439` e `448`) e nos metadados de `_compute_device_mode` (linhas `894`, `1041`, `1109`), um `Site (CM360)` é marcado como CTV na Visão 1 se `"ctv" in site.lower()`.
 - **Observação:** veículos sem `"CTV"` no nome que entreguem em `Connected TV` ou `Set top box` já são capturados automaticamente na Visão 2 (`device`). A edição manual só é necessária se você quiser incluí-los também na Visão 1 ou se o parceiro for mensurado apenas por pixel `1x1` sem User-Agent de TV (caindo em `Unknown platform` no CM360).
-- **Onde alterar (`step2_compute_methodology.py`, linhas `315` e `324`):**
+- **Onde alterar (`step2_compute_methodology.py`, linhas `439` e `448`):**
   ```python
   CTV_SITE_KEYWORDS = ("ctv", "connectedtv", "smarttv", "ott", "netflix", "roku", "globoplay")
   df_sites["is_ctv"] = df_sites["Site (CM360)"].astype(str).str.lower().apply(
@@ -131,24 +133,27 @@ Caso a taxonomia ou a conta do anunciante divirja das premissas padrão, ajuste 
   ```
 
 #### b) Heurística de Pré-Seleção de Tags Floodlight (`common.py`)
-- **Padrão atual:** `classify_tag()` (`common.py`, linhas `49–57`) define apenas quais atividades vêm pré-marcadas na UI (e na autodescoberta do `step0_setup_and_discover.py` quando `--purchase-activity-ids` é omitido). Busca `in_app_purchase` + `ios`/`android` ou substrings `("comprafeita", "purchase", "ordercomplete", "venda")`, excluindo `"pixelunico"`.
-- **Onde alterar (`common.py`, linha `55`):** adicione os tokens de compra adotados pela agência ou novos termos de exclusão para pixels globais.
+- **Padrão atual:** `classify_tag()` (`common.py`, linhas `49–59`) e `classify_product_tag()` (`common.py`, linhas `62–72`) definem quais atividades vêm pré-marcadas na UI e na autodescoberta do `step0_setup_and_discover.py`:
+  - `classify_tag()`: busca `in_app_purchase` + `ios`/`android` ou substrings `("comprafeita", "purchase", "ordercomplete", "venda")`, excluindo pixels globais e tags de recorrencia/primeira compra (`"pixelunico"`, `"recorrencia"`, `"primeiracompra"`).
+  - `classify_product_tag()`: busca `view_item` + `ios`/`android` ou substrings `("viewitem", "productview", "visualizacaodeproduto")` e tags `[04]...produto`.
+- **Onde alterar (`common.py`, linhas `49–72`):** adicione os tokens adotados pela agência ou novos termos de exclusão.
 
 #### c) Moeda e Locale Numérico (`common.py` e `step3_generate_html.py`)
-- **Padrão atual:** os valores numéricos vêm na moeda da conta do CM360 (`DV360 Cost (Account Currency)` / `Media Cost`), porém `fmt_curr()` (`common.py`, linhas `105–112`) formata com prefixo `"R$"` e separadores `pt-BR` (`1.234,56`). Há também rótulos `"R$"` nos gráficos de `step3_generate_html.py` (linhas `395–397`).
+- **Padrão atual:** os valores numéricos vêm na moeda da conta do CM360 (`DV360 Cost (Account Currency)` / `Media Cost`), porém `fmt_curr()` (`common.py`, linha `120`) formata com prefixo `"R$"` e separadores `pt-BR` (`1.234,56`). Há também rótulos `"R$"` nos gráficos de `step3_generate_html.py`.
 - **Onde alterar:** ajuste `fmt_curr()`, `fmt_dec()` e `fmt_int()` em `common.py` para contas operando em `USD`, `EUR` ou outras moedas.
 
 #### d) Agrupamento de Múltiplos `Campaign IDs` no Mesmo Estudo (`step1` e `step2`)
 - **Padrão atual:** o pipeline filtra um único `campaign_id` por execução.
 - **Onde alterar para consolidar múltiplos IDs:**
-  1. Em `step1_extract_reports.py` (`_build_cm360_specs`, linhas `169–172`), envie múltiplos dicionários `{"dimensionName": "campaign", "id": cid, "matchType": "EXACT"}` em `camp_filters` (filtros de mesma dimensão operam como `OR` na API v5).
-  2. Em `step2_compute_methodology.py` (linhas `109`, `291`, `298`, `552` e `566`), substitua `== camp_id` por `.isin(campaign_ids)`.
+  1. Em `step1_extract_reports.py` (`_build_cm360_specs`), envie múltiplos dicionários `{"dimensionName": "campaign", "id": cid, "matchType": "EXACT"}` em `camp_filters` (filtros de mesma dimensão operam como `OR` na API v5).
+  2. Em `step2_compute_methodology.py` (linhas `113`, `415`, `422`, `690`, `704` e `717`), substitua `== camp_id` por `.isin(campaign_ids)`.
 
 #### e) Constantes e Limiares Metodológicos (`step2_compute_methodology.py`)
-- `CTV_PLATFORM_NAMES` (linha `27`): `{"Connected TV", "Set top box"}` (IDs `30004` e `30006`).
-- `PURE_CTV_PLACEMENT_THRESHOLD = 0.95` (linha `28`): fração mínima de impressões em TV/STB exigida para classificar um `Placement ID` como toque determinístico puro de CTV no `Path to Conversion`.
-- `MIN_MEANINGFUL_CTV_IMPS = 1000.0` (linha `29`): volume mínimo de impressões em TV/STB para exibir o Site individualmente na Visão Device (abaixo disso, agrupa em `Residual`).
-- Limiar mínimo de amostra `>= 5` conversões multi-toque (linhas `188`, `371`, `779`): abaixo de 5 conversões observadas no P2C, o canal utiliza o lift consolidado do bloco CTV da campanha (ou o benchmark de `youtubectv` da mesma campanha para canais contendo `"youtube"`, linhas `781–797`). Canais contendo `"search"` no nome são sempre tratados como não-CTV (`linha 706`).
+- `CTV_PLATFORM_NAMES` (linha `28`): `{"Connected TV", "Set top box"}` (IDs `30004` e `30006`).
+- `PURE_CTV_PLACEMENT_THRESHOLD = 0.95` (linha `29`): fração mínima de impressões em TV/STB exigida para classificar um `Placement ID` como toque determinístico puro de CTV no `Path to Conversion`.
+- `MIN_MEANINGFUL_CTV_IMPS = 1000.0` (linha `30`): volume mínimo de impressões em TV/STB para exibir o Site individualmente na Visão Device (abaixo disso, agrupa em `Residual`).
+- `MAX_SHARED_ATTRIBUTION_PCT = 50.0` (linha `31`): teto simétrico máximo (`50%`) aplicado à Fração Atribuível `AF_e` nas conversões da interseção `CTV ∩ Non-CTV`.
+- `MIN_CVR_PURCHASES = 5.0` e `MIN_CVR_PROD_VIEWS = 30.0` (linhas `32–33`): amostra mínima exigida em `_compute_funnel_cvr_efficiency` (linha `223`) para calibrar o `CVR Produto -> Compra` diretamente por canal; abaixo disso, o canal herda o `AF_e` consolidado do bloco CTV da campanha. Para `AOV` no P2C, o limiar mínimo permanece `>= 5` conversões multi-toque observadas; canais contendo `"search"` no nome são sempre tratados como não-CTV (`linha 886`).
 
 #### f) Enriquecimento Opcional via API DV360 (`configs/campaign.example.json`)
 - No `web_app.py` (linha `198`), `dv360.enabled` permanece `False` e o custo vem integralmente do CM360. Para habilitar a extração complementar por Insertion Order / Line Item na API do DV360, defina `"enabled": true`, `advertiser_id` e `campaign_id` no bloco `dv360` do JSON e execute via `run_pipeline.py`.

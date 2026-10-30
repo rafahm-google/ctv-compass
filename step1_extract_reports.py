@@ -184,7 +184,7 @@ def _build_cm360_specs(cfg: dict, mode: str, ts: str) -> list[dict]:
             ),
             _std_spec(
                 "std_floodlight_activities", p, slug, ts, sd, ed,
-                ["campaign", "campaignId", "site", "activityGroup", "activity", "activityId"],
+                ["campaign", "campaignId", "site", "eventPlatformType", "activityGroup", "activity", "activityId"],
                 ["totalConversions", "totalConversionsRevenue", "activityViewThroughConversions",
                  "activityClickThroughConversions", "activityViewThroughRevenue", "activityClickThroughRevenue"],
                 camp_filters,
@@ -217,6 +217,13 @@ def _build_cm360_specs(cfg: dict, mode: str, ts: str) -> list[dict]:
         _std_spec(
             "std_device_floodlights", p, slug, ts, sd, ed,
             ["campaign", "campaignId", "site", "placement", "placementId", "platformType", "activityGroup", "activity", "activityId"],
+            ["totalConversions", "totalConversionsRevenue", "activityViewThroughConversions",
+             "activityClickThroughConversions", "activityViewThroughRevenue", "activityClickThroughRevenue"],
+            camp_filters,
+        ),
+        _std_spec(
+            "std_event_platform_floodlights", p, slug, ts, sd, ed,
+            ["campaign", "campaignId", "site", "eventPlatformType", "activityGroup", "activity", "activityId"],
             ["totalConversions", "totalConversionsRevenue", "activityViewThroughConversions",
              "activityClickThroughConversions", "activityViewThroughRevenue", "activityClickThroughRevenue"],
             camp_filters,

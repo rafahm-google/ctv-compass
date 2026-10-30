@@ -336,6 +336,11 @@ def _generate_site_infographics(res: dict, out_dir: Path) -> tuple[str, str, str
     ax.text(11.12, 0.58, f"Reconecta a interseção Cross-Device ({fmt_pct(blk['overlap_pct_campaign_sum'])}) → {fmt_dec(blk['total_attributed_conversions'], 1)} compras ({fmt_pct(blk['share_campaign_attributed_pct'])}) | {fmt_curr(blk['total_attributed_revenue'])}", fontsize=8.3, color="#0D652D", ha="center")
     plt.tight_layout(pad=0.3); plt.savefig(img1, dpi=220); plt.close(fig)
 
+    f_eff = res["funnel_cvr_efficiency"]
+    f_non, f_blk = f_eff["non_ctv_base"], f_eff["ctv_block"]
+    is_cvr_mode = f_eff["metric_source"] == "cvr_produto_compra"
+    cap_tag = " [teto 50%]" if f_blk["cap_applied"] else ""
+
     img2 = out_dir / "ilustracao_2_venn_intersecao.png"
     fig, ax = plt.subplots(figsize=(15, 6.4), dpi=220)
     ax.set_xlim(0, 15); ax.set_ylim(0, 6.4); ax.axis("off"); fig.patch.set_facecolor("#FFFFFF")
@@ -347,7 +352,7 @@ def _generate_site_infographics(res: dict, out_dir: Path) -> tuple[str, str, str
     ax.text(5.1, 3.05, f"Alcance Exclusivo:\n{fmt_pct(blk['exclusive_pct_campaign_sum'])} da campanha\n\nVendas Solo P2C:\n{fmt_int(blk['p2c_solo_conversions'])} compras ({fmt_curr(blk['p2c_solo_revenue'])})", fontsize=8.2, color="#202124", ha="center", va="center")
     ax.text(7.25, 4.15, "COORTE 3\nINTERSEÇÃO (1+)", fontsize=9.5, fontweight="bold", color="#188038", ha="center", va="center")
     ax.text(7.25, 3.20, f"Alcance Compartilhado:\n{fmt_pct(blk['overlap_pct_campaign_sum'])} da campanha\n\nVolume na Interseção:\n{fmt_dec(blk['intersecao_compras_1plus'], 1)} compras", fontsize=8.3, fontweight="bold", color="#202124", ha="center", va="center")
-    ax.text(7.25, 2.15, "Compras Assistidas =\nInterseção × Δ% Eficiência", fontsize=8, fontweight="bold", color="#188038", ha="center", va="center", bbox=dict(boxstyle="round,pad=0.25", facecolor="#E6F4EA", edgecolor="#188038"))
+    ax.text(7.25, 2.15, "Compras Assistidas =\nInterseção × AF_e (CVR)", fontsize=8, fontweight="bold", color="#188038", ha="center", va="center", bbox=dict(boxstyle="round,pad=0.25", facecolor="#E6F4EA", edgecolor="#188038"))
     ax.text(9.6, 3.95, "COORTE 2\nSó Outros Canais", fontsize=9.5, fontweight="bold", color="#3C4043", ha="center", va="center")
     ax.text(9.6, 3.05, f"Grupo de Controle\n(Sem toque de CTV)\n\n{fmt_int(ctrl_all['conversions'])} pedidos multi\nAOV Camp: {fmt_curr(ctrl_camp['aov'])}", fontsize=8.2, color="#202124", ha="center", va="center")
     ax.add_patch(FancyBboxPatch((0.4, 1.65), 3.3, 3.2, boxstyle="round,pad=0.12,rounding_size=0.18", ec="#1A73E8", fc="#F8F9FA", lw=1.8))
@@ -355,47 +360,55 @@ def _generate_site_infographics(res: dict, out_dir: Path) -> tuple[str, str, str
     ax.text(2.05, 3.05, f"Não extrapolamos o\nalcance exclusivo.\nContamos apenas as\nvendas Solo reais\nobservadas no P2C:\n• {fmt_int(blk['p2c_solo_conversions'])} compras Solo\n• {fmt_curr(blk['p2c_solo_revenue'])}", fontsize=8.4, color="#3C4043", ha="center", va="center")
     ax.add_patch(FancyBboxPatch((11.3, 1.65), 3.3, 3.2, boxstyle="round,pad=0.12,rounding_size=0.18", ec="#188038", fc="#F8F9FA", lw=1.8))
     ax.text(12.95, 4.45, "PASSO 2 & 3: VOLUME + R$", fontsize=9.5, fontweight="bold", color="#188038", ha="center")
-    ax.text(12.95, 3.05, f"1) Volume (Compras):\nPonderado pela economia\nde toques (-{fmt_pct(combo_blk['lift_efic_pct'])}).\n2) Valor (R$ Ticket Médio):\nPrêmio de AOV (+{fmt_pct(combo_blk['lift_valor_pct'])})\nsomado em R$ na receita.", fontsize=8.3, color="#3C4043", ha="center", va="center")
+    ax.text(12.95, 3.05, f"1) Volume (Compras):\nFração Atribuível AF_e\ndo CVR Produto→Compra\n({fmt_pct(f_blk['capped_afe_pct'])}{cap_tag}).\n2) Valor (R$ Ticket Médio):\nPrêmio de AOV (+{fmt_pct(combo_blk['lift_valor_pct'])})\nsomado em R$ na receita.", fontsize=8.1, color="#3C4043", ha="center", va="center")
     ax.add_patch(FancyBboxPatch((0.4, 0.25), 14.2, 0.95, boxstyle="round,pad=0.1,rounding_size=0.15", ec="#1A73E8", fc="#E8F0FE", lw=1.8))
-    ax.text(7.5, 0.72, "EQUAÇÃO UNIFICADA:  Compras = Solo P2C + (Interseção 1+ × Δ% Eficiência)   |   Receita (R$) = Receita Solo + Receita Base Assistida + Prêmio AOV (R$)", fontsize=8.9, fontweight="bold", color="#202124", ha="center", va="center")
+    ax.text(7.5, 0.72, "EQUAÇÃO UNIFICADA:  Compras = Solo P2C + (Interseção 1+ × AF_e CVR Produto→Compra)   |   Receita (R$) = Solo + Base Assistida + Prêmio AOV (R$)", fontsize=8.8, fontweight="bold", color="#202124", ha="center", va="center")
     plt.tight_layout(pad=0.3); plt.savefig(img2, dpi=220); plt.close(fig)
 
     img3 = out_dir / "ilustracao_3_lifts_marginais.png"
     fig = plt.figure(figsize=(15, 6.2), dpi=220); fig.patch.set_facecolor("#FFFFFF")
-    fig.text(0.03, 0.94, f"ILUSTRAÇÃO 3 • PROVA EMPÍRICA NO P2C: EFICIÊNCIA DE JORNADA (VOLUME) & TICKET MÉDIO (VALOR R$) — {meta['brand_name'].upper()}", fontsize=12.4, fontweight="bold", color="#1A73E8")
-    fig.text(0.03, 0.885, "A economia de toques define a fatia de compras assistidas na interseção; o aumento de Ticket Médio (AOV) define o prêmio financeiro em R$/pedido:", fontsize=9.8, color="#5F6368")
+    fig.text(0.03, 0.94, f"ILUSTRAÇÃO 3 • PROVA EMPÍRICA: EFICIÊNCIA DE FUNIL (CVR PRODUTO → COMPRA) & TICKET MÉDIO (AOV) — {meta['brand_name'].upper()}", fontsize=12.1, fontweight="bold", color="#1A73E8")
+    fig.text(0.03, 0.885, "O ganho na taxa de conversão pós-visualização de produto (AF_e, teto simétrico de 50%) pondera as compras assistidas; o Δ AOV define o prêmio em R$/pedido:", fontsize=9.6, color="#5F6368")
     ax1, ax2 = fig.add_axes([0.06, 0.14, 0.41, 0.63]), fig.add_axes([0.55, 0.14, 0.41, 0.63])
-    top_chans = [c for c in ctv_chans if c["p2c_combo_all_conversions"] > 0][:2]
-    cats1 = [f"{c['site']}\n(Jornada Completa)" for c in top_chans] + ["Bloco CTV Consolidado\n(Jornada Completa)"]
-    ctrl_t = [ctrl_all["avg_non_ctv_touches"]] * (len(top_chans) + 1)
-    ctv_t = [c["p2c_combo_all_nonctv_touches"] for c in top_chans] + [combo_blk["avg_non_ctv_touches"]]
-    lifts1 = [f"-{fmt_pct(c['lift_lente2_efic_pct'])} toques" for c in top_chans] + [f"-{fmt_pct(combo_blk['lift_efic_pct'])} toques"]
+    top_chans = [c for c in ctv_chans if c.get("prod_views", 0) >= 30 and c.get("purc_std_for_cvr", 0) >= 5][:2] or ctv_chans[:2]
+    if is_cvr_mode:
+        cats1 = [f"{c['site']}\n(Funil Std)" for c in top_chans] + ["Bloco CTV Consolidado\n(Funil Std)"]
+        ctrl_v = [f_non["cvr_pct"]] * (len(top_chans) + 1)
+        ctv_v = [c["cvr_prod_to_purc_pct"] for c in top_chans] + [f_blk["cvr_pct"]]
+        lifts1 = [f"AF_e: {fmt_pct(c['lift_lente2_efic_pct'])}{' (teto 50%)' if c.get('afe_cap_applied') else ''}" for c in top_chans] + [f"AF_e: {fmt_pct(f_blk['capped_afe_pct'])}{' (teto 50%)' if f_blk['cap_applied'] else ''}"]
+        ttl1, ylbl1 = "1. Conversão Pós-Produto: CVR (Define Volume Assistido)", "CVR Produto → Compra (%)"
+    else:
+        cats1 = [f"{c['site']}\n(Fallback AOV)" for c in top_chans] + ["Bloco CTV Consolidado\n(Fallback AOV)"]
+        ctrl_v = [0.0] * (len(top_chans) + 1)
+        ctv_v = [c["lift_lente2_efic_pct"] for c in top_chans] + [f_blk["capped_afe_pct"]]
+        lifts1 = [f"AF_e: {fmt_pct(v)}" for v in ctv_v]
+        ttl1, ylbl1 = "1. Fração Atribuível AF_e (Fallback s/ Tag de Produto)", "Fração Atribuível AF_e (%)"
     x, w = list(range(len(cats1))), 0.32
-    b1 = ax1.bar([i - w / 2 for i in x], ctrl_t, width=w, color="#9AA0A6", label="Coorte 2: Controle Sem CTV")
-    b2 = ax1.bar([i + w / 2 for i in x], ctv_t, width=w, color="#34A853", label="Coorte 3: Interseção Com CTV")
-    ax1.set_title("1. Economia de Toques Não-CTV (Define Volume Assistido)", fontsize=10.5, fontweight="bold", pad=12)
-    ax1.set_xticks(x); ax1.set_xticklabels(cats1, fontsize=9, fontweight="bold"); ax1.set_ylabel("Média de Toques Não-CTV", fontsize=9)
-    max_t = max(ctrl_t + ctv_t + [10.0]); ax1.set_ylim(0, max_t * 1.38); ax1.grid(axis="y", linestyle="--", alpha=0.4); ax1.legend(loc="upper right", fontsize=8.5)
+    b1 = ax1.bar([i - w / 2 for i in x], ctrl_v, width=w, color="#9AA0A6", label="Base Sem CTV (Não-CTV)")
+    b2 = ax1.bar([i + w / 2 for i in x], ctv_v, width=w, color="#34A853", label="Expostos CTV")
+    ax1.set_title(ttl1, fontsize=10.3, fontweight="bold", pad=12)
+    ax1.set_xticks(x); ax1.set_xticklabels(cats1, fontsize=8.8, fontweight="bold"); ax1.set_ylabel(ylbl1, fontsize=9)
+    max_v = max(ctrl_v + ctv_v + [0.5]); ax1.set_ylim(0, max_v * 1.42); ax1.grid(axis="y", linestyle="--", alpha=0.4); ax1.legend(loc="upper right", fontsize=8.5)
     for bar in b1:
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.2, fmt_dec(bar.get_height()), ha="center", fontsize=9, fontweight="bold", color="#5F6368")
+        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max_v * 0.025, fmt_pct(bar.get_height()), ha="center", fontsize=8.6, fontweight="bold", color="#5F6368")
     for idx, bar in enumerate(b2):
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.2, fmt_dec(bar.get_height()), ha="center", fontsize=9, fontweight="bold", color="#188038")
-        ax1.text(x[idx], max(ctrl_t[idx], bar.get_height()) + max_t * 0.13, lifts1[idx], ha="center", fontsize=8.5, fontweight="bold", color="#188038", bbox=dict(boxstyle="round,pad=0.25", facecolor="#E6F4EA", edgecolor="#34A853"))
+        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max_v * 0.025, fmt_pct(bar.get_height()), ha="center", fontsize=8.6, fontweight="bold", color="#188038")
+        ax1.text(x[idx], max(ctrl_v[idx], bar.get_height()) + max_v * 0.14, lifts1[idx], ha="center", fontsize=8.3, fontweight="bold", color="#188038", bbox=dict(boxstyle="round,pad=0.25", facecolor="#E6F4EA", edgecolor="#34A853"))
 
     cats2 = [f"{c['site']}\n(Campanha)" for c in top_chans] + ["Bloco CTV Consolidado\n(Campanha)"]
-    ctrl_aov = [ctrl_camp["aov"]] * (len(top_chans) + 1)
-    ctv_aov = [c["p2c_combo_camp_aov"] for c in top_chans] + [combo_blk["aov"]]
+    ctrl_aov = [c["base_ctrl_aov"] for c in top_chans] + [ctrl_camp["aov"]]
+    ctv_aov = [c["aov_valuation"] for c in top_chans] + [combo_blk["aov"]]
     lifts2 = [f"+{fmt_curr(c['aov_delta_brl'])}/ped. (+{fmt_pct(c['lift_lente1_specific_pct'])})" for c in top_chans] + [f"+{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))}/ped. (+{fmt_pct(combo_blk['lift_valor_pct'])})"]
     b3 = ax2.bar([i - w / 2 for i in x], ctrl_aov, width=w, color="#9AA0A6", label="Coorte 2: Controle Sem CTV")
     b4 = ax2.bar([i + w / 2 for i in x], ctv_aov, width=w, color="#4285F4", label="Coorte 3: Interseção Com CTV")
-    ax2.set_title("2. Expansão de Ticket Médio / AOV (Define Prêmio em R$)", fontsize=10.5, fontweight="bold", pad=12)
-    ax2.set_xticks(x); ax2.set_xticklabels(cats2, fontsize=9, fontweight="bold"); ax2.set_ylabel("Ticket Médio (R$)", fontsize=9)
-    max_a = max(ctrl_aov + ctv_aov + [150.0]); ax2.set_ylim(0, max_a * 1.38); ax2.grid(axis="y", linestyle="--", alpha=0.4); ax2.legend(loc="upper right", fontsize=8.5)
+    ax2.set_title("2. Expansão de Ticket Médio / AOV (Define Prêmio em R$)", fontsize=10.3, fontweight="bold", pad=12)
+    ax2.set_xticks(x); ax2.set_xticklabels(cats2, fontsize=8.8, fontweight="bold"); ax2.set_ylabel("Ticket Médio (R$)", fontsize=9)
+    max_a = max(ctrl_aov + ctv_aov + [150.0]); ax2.set_ylim(0, max_a * 1.42); ax2.grid(axis="y", linestyle="--", alpha=0.4); ax2.legend(loc="upper right", fontsize=8.5)
     for bar in b3:
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2.5, f"R$ {bar.get_height():.0f}", ha="center", fontsize=9, fontweight="bold", color="#5F6368")
+        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2.5, f"R$ {bar.get_height():.0f}", ha="center", fontsize=8.8, fontweight="bold", color="#5F6368")
     for idx, bar in enumerate(b4):
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2.5, f"R$ {bar.get_height():.0f}", ha="center", fontsize=9, fontweight="bold", color="#1A73E8")
-        ax2.text(x[idx], max(ctrl_aov[idx], bar.get_height()) + max_a * 0.13, lifts2[idx], ha="center", fontsize=8.2, fontweight="bold", color="#1A73E8", bbox=dict(boxstyle="round,pad=0.25", facecolor="#E8F0FE", edgecolor="#4285F4"))
+        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2.5, f"R$ {bar.get_height():.0f}", ha="center", fontsize=8.8, fontweight="bold", color="#1A73E8")
+        ax2.text(x[idx], max(ctrl_aov[idx], bar.get_height()) + max_a * 0.14, lifts2[idx], ha="center", fontsize=8.1, fontweight="bold", color="#1A73E8", bbox=dict(boxstyle="round,pad=0.25", facecolor="#E8F0FE", edgecolor="#4285F4"))
     plt.savefig(img3, dpi=220); plt.close(fig)
     return img_to_b64(img1), img_to_b64(img2), img_to_b64(img3)
 
@@ -403,6 +416,9 @@ def _generate_site_infographics(res: dict, out_dir: Path) -> tuple[str, str, str
 def _build_site_deck(res: dict, out_dir: Path) -> dict:
     b64_1, b64_2, b64_3 = _generate_site_infographics(res, out_dir)
     meta, tot, blk = res["meta"], res["campaign_totals"], res["ctv_block_consolidated"]
+    f_eff = res["funnel_cvr_efficiency"]
+    f_non, f_blk = f_eff["non_ctv_base"], f_eff["ctv_block"]
+    is_cvr_mode = f_eff["metric_source"] == "cvr_produto_compra"
     ctrl_all = res["p2c_control_vs_ctv"]["control_multi_no_ctv_all"]
     ctrl_camp = res["p2c_control_vs_ctv"]["control_multi_no_ctv_camp"]
     combo_blk = res["p2c_control_vs_ctv"]["ctv_combo_block_all"]
@@ -423,27 +439,30 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
     ) or '<tr><td colspan="9" style="text-align:center;color:var(--g-muted);">Nenhum Site com CTV no nome detectado — utilize a visão Device Type (Smart TV + STB).</td></tr>'
 
     lifts_rows = f"""<tr class="row-subtotal">
-      <td><strong>Grupo de Controle: Jornadas Multi-Canal Sem CTV</strong><div class="cell-sub">{fmt_int(ctrl_all['conversions'])} pedidos s/ CTV ({fmt_int(ctrl_camp['conversions'])} restrito à camp.)</div></td>
-      <td class="num">{fmt_int(ctrl_all['conversions'])}</td>
-      <td class="num">{fmt_dec(ctrl_all['avg_non_ctv_touches'])} toques<div class="cell-sub">Camp: {fmt_dec(ctrl_camp['avg_non_ctv_touches'])}</div></td>
+      <td><strong>Base Sem CTV (Não-CTV)</strong><div class="cell-sub">Funil Standard Não-CTV | Controle P2C s/ CTV: {fmt_int(ctrl_camp['conversions'])} ped. camp. ({fmt_int(ctrl_all['conversions'])} jornada)</div></td>
+      <td class="num">{fmt_int(f_non['product_views']) if is_cvr_mode else '—'}</td>
+      <td class="num">{fmt_int(f_non['purchases'])}</td>
+      <td class="num">{fmt_pct(f_non['cvr_pct']) if is_cvr_mode else '—'}</td>
       <td class="num">Base (0,00%)</td>
       <td class="num">{fmt_curr(ctrl_camp['aov'])}<div class="cell-sub">Jornada: {fmt_curr(ctrl_all['aov'])}</div></td>
       <td class="num">Base (R$ 0,00)</td>
     </tr>""" + "".join(
         f"""<tr>
-          <td><strong>Jornadas Com <code>{c['site']}</code></strong><div class="cell-sub">{fmt_int(c['p2c_solo_conversions'])} Solo + {fmt_int(c['p2c_combo_all_conversions'])} Combo</div></td>
-          <td class="num">{fmt_int(c['p2c_combo_all_conversions'])}</td>
-          <td class="num"><strong>{fmt_dec(c['p2c_combo_all_nonctv_touches'])} toques</strong><div class="cell-sub">({fmt_dec(c['p2c_combo_all_nonctv_touches'] - ctrl_all['avg_non_ctv_touches'], sign=True)} vs. controle)</div></td>
-          <td class="num cell-highlight-green">-{fmt_pct(c['lift_lente2_efic_pct'])}</td>
-          <td class="num"><strong>{fmt_curr(c['p2c_combo_camp_aov'])}</strong></td>
+          <td><strong><code>{c['site']}</code></strong><div class="cell-sub">P2C: {fmt_int(c['p2c_solo_conversions'])} Solo + {fmt_int(c['p2c_combo_all_conversions'])} Combo{' • AF_e bloco (amostra <30/5)' if (is_cvr_mode and c.get('lift_calibration_source') != 'cvr_direto_canal') else ''}</div></td>
+          <td class="num">{fmt_int(c['prod_views']) if is_cvr_mode else '—'}</td>
+          <td class="num">{fmt_int(c['purc_std_for_cvr'])}</td>
+          <td class="num">{f"<strong>{fmt_pct(c['cvr_prod_to_purc_pct'])}</strong>" if (is_cvr_mode and c.get('prod_views', 0) > 0) else '—'}</td>
+          <td class="num cell-highlight-green">{fmt_pct(c['lift_lente2_efic_pct'])}{f'<div class="cell-sub">Teto 50% (bruto {fmt_pct(c["raw_afe_pct"])})</div>' if c.get('afe_cap_applied') else ''}</td>
+          <td class="num"><strong>{fmt_curr(c['aov_valuation'])}</strong><div class="cell-sub">Base: {fmt_curr(c['base_ctrl_aov'])}</div></td>
           <td class="num cell-highlight-blue">+{fmt_curr(c['aov_delta_brl'])} / ped.<div class="cell-sub">(+{fmt_pct(c['lift_lente1_specific_pct'])})</div></td>
         </tr>"""
-        for c in ctv_chans if (c["p2c_combo_all_conversions"] > 0 or c["p2c_solo_conversions"] > 0)
+        for c in ctv_chans
     ) + f"""<tr class="row-total">
-      <td><strong>BLOCO CTV CONSOLIDADO (Jornadas Multi-Canal Com CTV)</strong></td>
-      <td class="num">{fmt_int(combo_blk['conversions'])}</td>
-      <td class="num">{fmt_dec(combo_blk['avg_non_ctv_touches'])} toques</td>
-      <td class="num">-{fmt_pct(combo_blk['lift_efic_pct'])}</td>
+      <td><strong>BLOCO CTV CONSOLIDADO</strong></td>
+      <td class="num">{fmt_int(f_blk['product_views']) if is_cvr_mode else '—'}</td>
+      <td class="num">{fmt_int(f_blk['purchases'])}</td>
+      <td class="num">{f"{fmt_pct(f_blk['cvr_pct'])} ({fmt_dec(f_blk['cvr_lift_mult'])}x)" if is_cvr_mode else 'Fallback AOV'}</td>
+      <td class="num">{fmt_pct(f_blk['capped_afe_pct'])}{f" (teto 50% | bruto {fmt_pct(f_blk['raw_afe_pct'])})" if f_blk['cap_applied'] else ''}</td>
       <td class="num">{fmt_curr(combo_blk['aov'])}</td>
       <td class="num">+{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))} / ped. (+{fmt_pct(combo_blk['lift_valor_pct'])})</td>
     </tr>"""
@@ -458,7 +477,7 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
           <td class="num">{fmt_curr(c['cost'])}<div class="cell-sub">{fmt_pct(c['cost_share_pct'])} do budget</div></td>
           <td class="num">{fmt_int(c['std_conversions'])} comp.<div class="cell-sub">{fmt_curr(c['std_revenue'])}</div></td>
           <td class="num"><strong>{fmt_int(c['p2c_solo_conversions'])} comp.</strong><div class="cell-sub">{fmt_curr(c['p2c_solo_revenue'])}</div></td>
-          <td class="num"><strong>{fmt_dec(c['intersecao_compras_1plus'], 1)} comp.</strong><div class="cell-sub">vs. {fmt_int(c['p2c_combo_all_conversions'])} P2C</div></td>
+          <td class="num"><strong>{fmt_dec(c['intersecao_compras_1plus'], 1)} comp.</strong><div class="cell-sub">AF_e: {fmt_pct(c['lift_lente2_efic_pct'])}{' (teto 50%)' if c.get('afe_cap_applied') else ''}</div></td>
           <td class="num cell-highlight-green">{fmt_dec(c['total_attributed_conversions'], 1)} comp. ({fmt_pct(c['share_campaign_attributed_pct'])})<div class="cell-sub">{fmt_int(c['p2c_solo_conversions'])} Solo + {fmt_dec(c['assisted_conversions'], 1)} Assist.</div></td>
           <td class="num cell-highlight-blue">+{fmt_curr(c['aov_premium_revenue'])}<div class="cell-sub">AOV {fmt_curr(c['aov_valuation'])} (+{fmt_curr(c['aov_delta_brl'])}/ped.)</div></td>
           <td class="num" style="font-weight:700;color:{rc};">{fmt_curr(c['total_attributed_revenue'])}<div class="cell-sub" style="font-weight:700;color:{rc};">{rs} | {cs}</div></td>
@@ -499,6 +518,16 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
         if (paid_pos_roas and c_main and paid_pos_roas[0]["site"] != c_main["site"])
         else ""
     )
+    step2_card_text = (
+        f"Mede o ganho na conversão pós-visualização de produto (<code>CVR Produto → Compra</code>: <code>{fmt_pct(f_blk['cvr_pct'])}</code> c/ CTV vs. <code>{fmt_pct(f_non['cvr_pct'])}</code> s/ CTV), definindo a Fração Atribuível entre Expostos (<code>AF_e = {fmt_pct(f_blk['capped_afe_pct'])}</code>, teto simétrico de 50%)."
+        if is_cvr_mode
+        else f"Sem tags de visualização de produto no anunciante, a Fração Atribuível (<code>AF_e = {fmt_pct(f_blk['capped_afe_pct'])}</code>, teto simétrico de 50%) utiliza o ganho relativo de valor como proxy conservador."
+    )
+    step2_card_math = (
+        f"Cálculo: ({fmt_pct(f_blk['cvr_pct'])} - {fmt_pct(f_non['cvr_pct'])}) ÷ {fmt_pct(f_blk['cvr_pct'])} = {fmt_pct(f_blk['raw_afe_pct'])} → AF_e: {fmt_pct(f_blk['capped_afe_pct'])}"
+        if is_cvr_mode
+        else f"Cálculo: min(50,00%; Δ% AOV {fmt_pct(combo_blk['lift_valor_pct'])}) = {fmt_pct(f_blk['capped_afe_pct'])}"
+    )
 
     slides_html = f"""
       <section class="slide-card">
@@ -515,10 +544,10 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
       <section class="slide-card slide-hidden">
         <div class="slide-meta"><span class="slide-kicker">PASSO 02 • METODOLOGIA DE MENSURAÇÃO INTEGRADA</span><span class="slide-scope">Triangulação Nativa CM360: Standard + Unique Reach Overlap (1+) + Path to Conversion (14d)</span></div>
         <h2 class="slide-title">Decomposição Auditável em 3 Passos: Vendas Solo + Volume Assistido + Prêmio de AOV (R$)</h2>
-        <div class="formula-box"><div class="formula-label">Equações Unificadas da Metodologia</div><div class="formula-code">Compras Atribuídas = Solo P2C + (Interseção 1+ × Δ% Eficiência) &nbsp;|&nbsp; Receita (R$) = Solo + Base Assistida + Prêmio AOV (R$)</div></div>
+        <div class="formula-box"><div class="formula-label">Equações Unificadas da Metodologia</div><div class="formula-code">Compras Atribuídas = Solo P2C + (Interseção 1+ × AF_e CVR Produto→Compra) &nbsp;|&nbsp; Receita (R$) = Solo + Base Assistida + Prêmio AOV (R$)</div></div>
         <div class="grid-3">
           <div class="card top-blue"><div><span class="badge blue">Passo 1 • Vendas Solo (P2C)</span><p class="card-text">Contabilizamos integralmente apenas os pedidos observados no <code>Path to Conversion</code> em que a CTV foi o único canal da jornada, sem extrapolar o alcance exclusivo.</p></div><div class="math-foot">Cálculo: Observado P2C: {fmt_int(blk['p2c_solo_conversions'])} vendas Solo ({fmt_curr(blk['p2c_solo_revenue'])})</div></div>
-          <div class="card top-green"><div><span class="badge green">Passo 2 • Volume (Δ% Eficiência)</span><p class="card-text">Mede a redução de toques Não-CTV até a compra quando o consumidor viu CTV (<code>-{fmt_pct(combo_blk['lift_efic_pct'])}</code> no bloco), ponderando quantas compras da interseção foram assistidas.</p></div><div class="math-foot">Cálculo: ({fmt_dec(ctrl_all['avg_non_ctv_touches'])} - {fmt_dec(combo_blk['avg_non_ctv_touches'])}) ÷ {fmt_dec(ctrl_all['avg_non_ctv_touches'])} = {fmt_pct(combo_blk['lift_efic_pct'])}</div></div>
+          <div class="card top-green"><div><span class="badge green">Passo 2 • Volume (AF_e Funil)</span><p class="card-text">{step2_card_text}</p></div><div class="math-foot">{step2_card_math}</div></div>
           <div class="card top-yellow"><div><span class="badge yellow">Passo 3 • Valor em R$ (Δ AOV)</span><p class="card-text">Expansão de Ticket Médio entra exclusivamente em Reais por pedido assistido (<code>+{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))}/ped.</code>), gerando <code>+{fmt_curr(blk['aov_premium_revenue'])}</code> em prêmio de cesta.</p></div><div class="math-foot">Cálculo: {fmt_curr(combo_blk['aov'])} - {fmt_curr(ctrl_camp['aov'])} = +{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))}/ped.</div></div>
         </div>
       </section>
@@ -529,7 +558,7 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
         <div class="vis-tabs no-print">
           <button onclick="showVisTab(0)" class="vis-tab active">1. Jornada Cross-Device</button>
           <button onclick="showVisTab(1)" class="vis-tab">2. Diagrama de Venn (1+)</button>
-          <button onclick="showVisTab(2)" class="vis-tab">3. Eficiência &amp; Ticket Médio</button>
+          <button onclick="showVisTab(2)" class="vis-tab">3. Funil (CVR) &amp; Ticket Médio</button>
           <button onclick="showVisTab(3)" class="vis-tab">Exibir Todos os 3</button>
         </div>
         <div class="vis-panel"><img src="{b64_1}" alt="Ilustração 1" class="vis-img"></div>
@@ -549,12 +578,12 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
       </section>
 
       <section class="slide-card slide-hidden">
-        <div class="slide-meta"><span class="slide-kicker">PASSO 05 • ETAPA 2 DO CÁLCULO (EFICIÊNCIA &amp; AOV NO P2C 14D)</span><span class="slide-scope">Comparativo Simétrico Com CTV vs. Controle Sem CTV</span></div>
-        <h2 class="slide-title">Economia de Toques (Volume) e Ganho de Ticket Médio (R$) no Path to Conversion</h2>
+        <div class="slide-meta"><span class="slide-kicker">PASSO 05 • ETAPA 2 DO CÁLCULO (FUNIL CVR &amp; AOV NO P2C 14D)</span><span class="slide-scope">Comparativo Simétrico Expostos CTV vs. Base Sem CTV</span></div>
+        <h2 class="slide-title">Conversão Pós-Visualização de Produto (AF_e) e Ganho de Ticket Médio (R$)</h2>
         <div class="table-box">
-          <div class="table-head-bar"><span class="table-head-title">Jornadas Multi-Canal Com CTV vs. Controle Sem CTV</span><span>Base: {fmt_int(tot['p2c_total_conversions'])} Compras P2C ({fmt_curr(tot['p2c_total_revenue'])})</span></div>
-          <div class="table-scroll"><table><thead><tr><th>Coorte de Jornada (14d)</th><th class="num">Compras Combo</th><th class="num">Toques Não-CTV</th><th class="num cell-highlight-green">Economia Toques</th><th class="num">Ticket Médio (AOV)</th><th class="num cell-highlight-blue">Prêmio AOV (R$)</th></tr></thead><tbody>{lifts_rows}</tbody></table></div>
-          <div class="table-foot-math">Como calculamos: Economia de Toques = (Toques Controle - Toques Com CTV) ÷ Toques Controle | Prêmio AOV = max(0, AOV Com CTV - AOV Controle).</div>
+          <div class="table-head-bar"><span class="table-head-title">Funil Produto → Compra (Standard) &amp; Ticket Médio P2C (14d)</span><span>Teto Simétrico AF_e: 50,00% | Base P2C: {fmt_int(tot['p2c_total_conversions'])} Compras ({fmt_curr(tot['p2c_total_revenue'])})</span></div>
+          <div class="table-scroll"><table><thead><tr><th>Coorte / Canal</th><th class="num">Views de Produto</th><th class="num">Compras (Funil Std)</th><th class="num">CVR Produto → Compra</th><th class="num cell-highlight-green">Fração AF_e (Teto 50%)</th><th class="num">Ticket Médio P2C (AOV)</th><th class="num cell-highlight-blue">Prêmio AOV (R$)</th></tr></thead><tbody>{lifts_rows}</tbody></table></div>
+          <div class="table-foot-math">Como calculamos: CVR Produto → Compra = Compras Oficiais ÷ Views de Produto Oficiais (cancelando algebricamente a perda cross-device) | AF_e = min(50%, max(0%, (CVR_CTV - CVR_Base) ÷ CVR_CTV)) | Canais com amostra &lt; 30 views ou &lt; 5 compras herdam o AF_e consolidado do bloco | Prêmio AOV = max(0, AOV Com CTV - AOV Controle).</div>
         </div>
       </section>
 
@@ -565,7 +594,7 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
           <div class="table-head-bar"><span class="table-head-title">Resultado Final por Canal CTV e Consolidado</span><span>ROAS Bloco: {fmt_dec(blk['roas_attributed'])}x | CPA: {fmt_curr(blk['cpa_attributed'])}</span></div>
           <div class="table-scroll"><table><thead><tr><th>Canal CTV</th><th class="num">Custo</th><th class="num">Standard</th><th class="num">Vendas Solo</th><th class="num">Interseção 1+</th><th class="num cell-highlight-green">Compras Atribuídas</th><th class="num cell-highlight-blue">Prêmio AOV (R$)</th><th class="num">Receita, ROAS &amp; CPA</th></tr></thead>
           <tbody>{res_rows}<tr class="row-total"><td>TOTAL BLOCO CTV ({len(ctv_chans)} Veículos)</td><td class="num">{fmt_curr(blk['cost'])}<div class="cell-sub">{fmt_pct(blk['cost_share_pct'])} da camp.</div></td><td class="num">{fmt_int(blk['std_conversions'])} comp.<div class="cell-sub">{fmt_curr(blk['std_revenue'])}</div></td><td class="num">{fmt_int(blk['p2c_solo_conversions'])} comp.<div class="cell-sub">{fmt_curr(blk['p2c_solo_revenue'])}</div></td><td class="num">{fmt_dec(blk['intersecao_compras_1plus'], 1)} comp.</td><td class="num">{fmt_dec(blk['total_attributed_conversions'], 1)} comp. ({fmt_pct(blk['share_campaign_attributed_pct'])})</td><td class="num">+{fmt_curr(blk['aov_premium_revenue'])}</td><td class="num">{fmt_curr(blk['total_attributed_revenue'])}<div class="cell-sub">ROAS: {fmt_dec(blk['roas_attributed'])}x | CPA: {fmt_curr(blk['cpa_attributed'])}</div></td></tr></tbody></table></div>
-          <div class="table-foot-math">Como calculamos: Compras Atribuídas = Solo P2C + (Interseção 1+ × Economia de Toques Δ%) | Receita Atribuída = Receita Solo + (Compras Assistidas × AOV Base Controle) + Prêmio AOV (R$) | ROAS = Receita ÷ Custo | CPA = Custo ÷ Compras. Nota financeira: superar 1,0x de ROAS significa gerar mais receita atribuída do que o custo de mídia investido no veículo (não equivale a lucro líquido contábil).</div>
+          <div class="table-foot-math">Como calculamos: Compras Atribuídas = Solo P2C + (Interseção 1+ × AF_e CVR Produto→Compra, teto 50%) | Receita Atribuída = Receita Solo + (Compras Assistidas × AOV Base Controle) + Prêmio AOV (R$) | ROAS = Receita ÷ Custo | CPA = Custo ÷ Compras. Nota financeira: superar 1,0x de ROAS significa gerar mais receita atribuída do que o custo de mídia investido no veículo (não equivale a lucro líquido contábil).</div>
         </div>
         {f'<div class="takeaway-bar"><div class="takeaway-text"><strong>Destaque Principal (<code>{c_main["site"]}</code>):</strong> CPM de {fmt_curr(c_main["cpm"])} (eCPM Co-Viewed {fmt_curr(c_main["ecpm_coview"])}), {fmt_dec(c_main["total_attributed_conversions"], 1)} compras atribuídas e {fmt_curr(c_main["total_attributed_revenue"])}, {roas_clause}.{sec_roas_note}</div></div>' if c_main else ''}
       </section>
@@ -584,7 +613,7 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
         <div class="slide-meta"><span class="slide-kicker">PASSO 08 • GOVERNANÇA TÉCNICA E PRÓXIMOS PASSOS</span><span class="slide-scope">Recomendações Executivas para {meta['agency_name']} &amp; {meta['brand_name']}</span></div>
         <h2 class="slide-title">Confiabilidade Metodológica e Plano de Ação</h2>
         <div class="grid-3">
-          <div class="card top-green"><div><span class="badge green">1. Ponte Cross-Device Determinística</span><ul class="clean-list"><li>Ambientes logados conectam Smart TV e smartphone no <code>Reach Overlap</code> sem depender de clique na TV.</li><li>Volume assistido e prêmio de AOV são reportados em suas unidades exatas (pedidos vs. R$).</li></ul></div></div>
+          <div class="card top-green"><div><span class="badge green">1. Ponte Cross-Device Determinística</span><ul class="clean-list"><li>Ambientes logados conectam Smart TV e smartphone no <code>Reach Overlap</code> sem depender de clique na TV.</li><li>Volume assistido (via <code>CVR Produto → Compra</code>) e prêmio de AOV são reportados em suas unidades exatas (pedidos vs. R$).</li></ul></div></div>
           <div class="card top-yellow"><div><span class="badge yellow">2. Cautelas em Inventários Externos</span><ul class="clean-list"><li>Parceiros externos sem login unificado concentram maior parcela de alcance isolado ({fmt_pct(c_sec['exclusive_pct_site'] if c_sec else 0)} em <code>{c_sec['site'] if c_sec else 'Outros'}</code>).</li><li>Evitar misturar Mobile e Smart TV no mesmo Placement para preservar rastreio determinístico no P2C.</li></ul></div></div>
           <div class="card top-blue"><div><span class="badge blue">3. Próximos Passos</span><ul class="clean-list"><li>Conectar audiências de CTV ao retargeting de performance para elevar a conectividade Cross-Device.</li><li>Complementar com estudos incrementais (Conversion Lift / Geo-Lift) em voos de alta escala.</li></ul></div></div>
         </div>
@@ -592,7 +621,7 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
     """
     titles = [
         "O Desafio de Medir CTV", "Metodologia Integrada", "Guia Visual Ilustrado", "Passo 1: Alcance & Interseção",
-        "Passo 2: Ganho Marginal (P2C)", "Resultado Final CTV", "Visão 360° da Campanha", "Governança & Plano de Ação",
+        "Passo 2: Eficiência (CVR) & AOV", "Resultado Final CTV", "Visão 360° da Campanha", "Governança & Plano de Ação",
     ]
     return {
         "id": "site",
@@ -710,6 +739,10 @@ def _generate_device_infographics(res: dict, out_dir: Path) -> tuple[str, str, s
 def _build_device_deck(res: dict, out_dir: Path) -> dict:
     b64_1, b64_2, b64_3 = _generate_device_infographics(res, out_dir)
     meta, tot, blk, ie = res["meta"], res["campaign_totals"], res["ctv_block_consolidated"], res["exact_inclusion_exclusion_block"]
+    f_eff = res["funnel_cvr_efficiency"]
+    f_non, f_blk = f_eff["non_ctv_base"], f_eff["ctv_block"]
+    is_cvr_mode = f_eff["metric_source"] == "cvr_produto_compra"
+    has_ev_plat = bool(meta.get("has_event_platform_type"))
     ctrl_all = res["p2c_control_vs_ctv"]["control_multi_no_ctv_all"]
     ctrl_camp = res["p2c_control_vs_ctv"]["control_multi_no_ctv_camp"]
     ctv_chans, plat_list, sites_split = res["ctv_channels"], res["platform_breakdown"], res["all_sites_device_split"]
@@ -754,7 +787,7 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
           <td class="num">{fmt_curr(c['cost'])}<span class="cell-sub">{fmt_pct(c['cost_share_pct'])} budget</span></td>
           <td class="num">{fmt_dec(c['std_conversions'], 1)} comp.<span class="cell-sub">{fmt_curr(c['std_revenue'])}</span></td>
           <td class="num">{fmt_int(c['p2c_solo_conversions'])} comp.<span class="cell-sub">{fmt_curr(c['p2c_solo_revenue'])}</span></td>
-          <td class="num">{fmt_dec(c['intersecao_compras_1plus'], 1)} comp.<span class="cell-sub">Lift: -{fmt_pct(c['lift_lente2_efic_pct'])}</span></td>
+          <td class="num">{fmt_dec(c['intersecao_compras_1plus'], 1)} comp.<span class="cell-sub">AF_e: {fmt_pct(c['lift_lente2_efic_pct'])}{' (teto 50%)' if c.get('afe_cap_applied') else ''}</span></td>
           <td class="num cell-highlight-green">{fmt_dec(c['total_attributed_conversions'], 1)} comp. ({fmt_pct(c['share_campaign_attributed_pct'])})</td>
           <td class="num cell-highlight-blue">+{fmt_curr(c['aov_premium_revenue'])}</td>
           <td class="num"><strong>{fmt_curr(c['total_attributed_revenue'])}</strong><span class="cell-sub">{f"ROAS: {fmt_dec(c['roas_attributed'])}x | CPA: {fmt_curr(c['cpa_attributed'])}" if c['roas_attributed'] is not None else 'Entrega s/ custo'}</span></td>
@@ -792,6 +825,22 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
     extra_cost = sum(c["cost"] for c in ctv_chans if not c["had_ctv_in_site_name"])
     iso_pct = 100.0 - ie["exact_connectivity_pct_of_ctv"]
     non_ctv_cost_tot = tot["std_cost"] - blk["cost"]
+    dev_card2_badge = "2. Dimensão eventPlatformType &amp; Funil CVR" if has_ev_plat else "2. Ponderação Floodlight &amp; Funil CVR"
+    if has_ev_plat and is_cvr_mode:
+        dev_card2_text = f"Extraímos <code>Attributed Event Platform Type</code> no CM360 para medir no dispositivo da impressão tanto as compras Standard TV/STB (<code>{fmt_int(blk['std_conversions'])}</code> comp.) quanto o funil <code>CVR Produto → Compra</code> (<code>{fmt_pct(f_blk['cvr_pct'])}</code> vs. <code>{fmt_pct(f_non['cvr_pct'])}</code>; <code>AF_e = {fmt_pct(f_blk['capped_afe_pct'])}</code>)."
+        dev_card2_math = f"Cálculo: CVR TV/STB: {fmt_int(f_blk['purchases'])} ÷ {fmt_int(f_blk['product_views'])} = {fmt_pct(f_blk['cvr_pct'])} | AF_e (teto 50%): {fmt_pct(f_blk['capped_afe_pct'])}"
+    elif is_cvr_mode:
+        dev_card2_text = f"Nas linhas Floodlight sem <code>eventPlatformType</code>, ponderamos compras e views de produto pelo share de impressões TV/STB de cada <code>Placement ID</code> ({fmt_dec(blk['std_conversions'], 1)} comp.; <code>CVR = {fmt_pct(f_blk['cvr_pct'])}</code> vs. <code>{fmt_pct(f_non['cvr_pct'])}</code>; <code>AF_e = {fmt_pct(f_blk['capped_afe_pct'])}</code>)."
+        dev_card2_math = f"Cálculo: CVR TV/STB: {fmt_pct(f_blk['cvr_pct'])} vs. Base {fmt_pct(f_non['cvr_pct'])} | AF_e (teto 50%): {fmt_pct(f_blk['capped_afe_pct'])}"
+    else:
+        dev_card2_text = f"Nas linhas Floodlight, apuramos as compras Standard TV/STB ({fmt_dec(blk['std_conversions'], 1)} comp.) e aplicamos o fallback conservador de valor na Fração Atribuível (<code>AF_e = {fmt_pct(f_blk['capped_afe_pct'])}</code>, teto de 50%)."
+        dev_card2_math = f"Cálculo: VT TV Std: {fmt_dec(blk['std_vt_conversions'], 1)} de {fmt_dec(blk['std_conversions'], 1)} | AF_e: {fmt_pct(f_blk['capped_afe_pct'])}"
+    std_imp_note = (
+        "apuradas diretamente via dimensão Attributed Event Platform Type no CM360 (dispositivo onde o anúncio foi exibido)"
+        if has_ev_plat
+        else "ponderadas pela participação exata de impressões de cada Placement ID por plataforma (ou cliques em placements click-tracker sem impressões)"
+    )
+    std_col_hdr = "Std (Imp. TV)" if has_ev_plat else "Std (Pond. TV)"
 
     slides_html = f"""
       <section class="slide-card">
@@ -810,8 +859,8 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
         <h2 class="slide-title">Três Soluções Matemáticas para Medir Hardware de TV no CM360</h2>
         <div class="grid-3">
           <div class="card top-blue"><div><span class="badge blue">1. Inclusão-Exclusão Exata</span><p class="card-text">Como o CM360 bloqueia <code>Duplicate Reach</code> filtrado por <code>platformType</code>, extraímos Universo Total (<code>|U|</code>), Bloco TV/STB (<code>|A|</code>) e Bloco Não-CTV (<code>|B|</code>), obtendo <code>|A ∩ B| = |A| + |B| - |U|</code> com exatidão.</p></div><div class="math-foot">Cálculo: Fator Cross-Device: {fmt_int(ie['exact_cross_device_overlap_1plus'])} ÷ {fmt_int(blk['raw_duplicate_reach_1plus_sum'])} = {fmt_dec(ie['pure_cross_device_scale_factor'], 4)}</div></div>
-          <div class="card top-yellow"><div><span class="badge yellow">2. Ponderação Floodlight p/ Placement</span><p class="card-text">Nas linhas Floodlight, <code>Platform Type</code> reflete o checkout (onde TV = 0). Ponderamos cada conversão <code>Standard</code> pelo share exato de impressões TV/STB do seu <code>Placement ID</code>: {fmt_dec(blk['std_conversions'], 1)} compras.</p></div><div class="math-foot">Cálculo: VT TV Std: {fmt_dec(blk['std_vt_conversions'], 1)} de {fmt_dec(blk['std_conversions'], 1)} ({fmt_pct((blk['std_vt_conversions']/blk['std_conversions']*100.0) if blk['std_conversions']>0 else 100.0, 1)} View-Through)</div></div>
-          <div class="card top-green"><div><span class="badge green">3. Pureza P2C ≥95% em Placements Mistos</span><p class="card-text">Isolamos {fmt_int(res['p2c_touch_purity_audit']['pure_ctv_touches_ge_95pct'])} toques determinísticos puros de TV (≥95%) no P2C para não contaminar o Grupo de Controle ({fmt_dec(ctrl_all['avg_non_ctv_touches'])} toques; AOV {fmt_curr(ctrl_camp['aov'])}).</p></div><div class="math-foot">Cálculo: Toques mistos isolados: {fmt_int(res['p2c_touch_purity_audit']['mixed_touches_5_to_95pct'])}</div></div>
+          <div class="card top-yellow"><div><span class="badge yellow">{dev_card2_badge}</span><p class="card-text">{dev_card2_text}</p></div><div class="math-foot">{dev_card2_math}</div></div>
+          <div class="card top-green"><div><span class="badge green">3. Pureza P2C ≥95% para Solo &amp; AOV</span><p class="card-text">Isolamos {fmt_int(res['p2c_touch_purity_audit']['pure_ctv_touches_ge_95pct'])} toques determinísticos puros de TV (≥95%) no P2C para apurar Vendas Solo reais ({fmt_int(blk['p2c_solo_conversions'])} ped.) e preservar o Grupo de Controle do Ticket Médio ({fmt_int(ctrl_all['conversions'])} ped.; AOV {fmt_curr(ctrl_camp['aov'])}).</p></div><div class="math-foot">Cálculo: Toques mistos isolados (5%–95%): {fmt_int(res['p2c_touch_purity_audit']['mixed_touches_5_to_95pct'])}</div></div>
         </div>
       </section>
 
@@ -832,7 +881,7 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
       <section class="slide-card slide-hidden">
         <div class="slide-meta"><span class="slide-kicker">PÁGINA 04 • RAIO-X DE PLATAFORMAS E SITES (100% RECONCILIADO)</span><span class="slide-scope">Trava 2: Soma == {fmt_curr(tot['std_cost'])} (100,00%)</span></div>
         <h2 class="slide-title">Entrega Exata em Smart TV (30004) e Set-top Box (30006) por Plataforma e Site</h2>
-        <div class="table-box"><div class="table-head-bar"><span class="table-head-title">1. Abertura por Platform Type (CM360)</span></div><div class="table-scroll"><table><thead><tr><th>Platform Type</th><th class="num">Custo</th><th class="num">% Budget</th><th class="num">Impressões</th><th class="num">Unique Reach</th><th class="num">Co-Viewed</th><th class="num cell-highlight-blue">Compras Std (Imp.)</th><th class="num">Receita Std</th><th class="num">Checkouts Std</th></tr></thead><tbody>{plat_rows}<tr class="row-total"><td>TOTAL CAMPANHA</td><td class="num">{fmt_curr(tot['std_cost'])}</td><td class="num">100,00%</td><td class="num">{fmt_int(tot['std_impressions'])}</td><td class="num">{fmt_int(tot['reach_devices'])}</td><td class="num">{fmt_int(tot['reach_coviewed'])}</td><td class="num">{fmt_dec(tot['std_conversions'], 1)}</td><td class="num">{fmt_curr(tot['std_revenue'])}</td><td class="num">{fmt_int(tot['std_conversions'])}</td></tr></tbody></table></div><div class="table-foot-math">Como calculamos: % Budget = Custo Plataforma ÷ {fmt_curr(tot['std_cost'])} | Compras Std (Imp.) ponderadas pela participação exata de impressões de cada Placement ID por plataforma (ou cliques em placements click-tracker sem impressões).</div></div>
+        <div class="table-box"><div class="table-head-bar"><span class="table-head-title">1. Abertura por Platform Type (CM360)</span></div><div class="table-scroll"><table><thead><tr><th>Platform Type</th><th class="num">Custo</th><th class="num">% Budget</th><th class="num">Impressões</th><th class="num">Unique Reach</th><th class="num">Co-Viewed</th><th class="num cell-highlight-blue">Compras Std (Imp.)</th><th class="num">Receita Std</th><th class="num">Checkouts Std</th></tr></thead><tbody>{plat_rows}<tr class="row-total"><td>TOTAL CAMPANHA</td><td class="num">{fmt_curr(tot['std_cost'])}</td><td class="num">100,00%</td><td class="num">{fmt_int(tot['std_impressions'])}</td><td class="num">{fmt_int(tot['reach_devices'])}</td><td class="num">{fmt_int(tot['reach_coviewed'])}</td><td class="num">{fmt_dec(tot['std_conversions'], 1)}</td><td class="num">{fmt_curr(tot['std_revenue'])}</td><td class="num">{fmt_int(tot['std_conversions'])}</td></tr></tbody></table></div><div class="table-foot-math">Como calculamos: % Budget = Custo Plataforma ÷ {fmt_curr(tot['std_cost'])} | Compras Std (Imp.) {std_imp_note}.</div></div>
         <div class="table-box"><div class="table-head-bar"><span class="table-head-title">2. Decomposição dos {len(sites_split)} Sites (TV + STB vs. Outros Dispositivos)</span></div><div class="table-scroll"><table><thead><tr><th>Site (CM360)</th><th class="num">Custo Total</th><th class="num">Custo TV + STB</th><th class="num">Custo Mobile/PC</th><th class="num">% CTV no Site</th><th class="num">Imps TV + STB</th><th class="num">Compras Std (TV/Tot)</th></tr></thead><tbody>{split_rows}<tr class="row-total"><td>TOTAL CAMPANHA ({len(sites_split)} Sites)</td><td class="num">{fmt_curr(tot['std_cost'])}</td><td class="num">{fmt_curr(blk['cost'])}</td><td class="num">{fmt_curr(non_ctv_cost_tot)}</td><td class="num">{fmt_pct(blk['cost_share_pct'])}</td><td class="num">{fmt_int(blk['impressions'])}</td><td class="num">{fmt_dec(blk['std_conversions'], 1)} / {fmt_int(tot['std_conversions'])}</td></tr></tbody></table></div><div class="table-foot-math">Como calculamos: Custo TV + STB + Custo Mobile/PC = {fmt_curr(tot['std_cost'])} (100,00% reconciliado) | % CTV no Site = Custo TV + STB ÷ Custo Total do Site.</div></div>
       </section>
 
@@ -848,10 +897,10 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
       <section class="slide-card slide-hidden">
         <div class="slide-meta"><span class="slide-kicker">PÁGINA 06 • RESULTADO FINAL POR DEVICE TYPE</span><span class="slide-scope">Fechamento Exato Trava 1 &amp; Trava 2</span></div>
         <h2 class="slide-title">Resultado Final Device CTV: {fmt_dec(blk['total_attributed_conversions'], 1)} Compras ({fmt_curr(blk['total_attributed_revenue'])})</h2>
-        <div class="table-box"><div class="table-scroll"><table><thead><tr><th>Canal (Fatia TV+STB)</th><th class="num">Custo TV+STB</th><th class="num">Std (Pond. TV)</th><th class="num">Solo P2C</th><th class="num">Interseção Pura</th><th class="num cell-highlight-green">Compras Atribuídas</th><th class="num cell-highlight-blue">Prêmio AOV (R$)</th><th class="num">Receita, ROAS &amp; CPA</th></tr></thead><tbody>{res_rows}
+        <div class="table-box"><div class="table-scroll"><table><thead><tr><th>Canal (Fatia TV+STB)</th><th class="num">Custo TV+STB</th><th class="num">{std_col_hdr}</th><th class="num">Solo P2C</th><th class="num">Interseção Pura</th><th class="num cell-highlight-green">Compras Atribuídas</th><th class="num cell-highlight-blue">Prêmio AOV (R$)</th><th class="num">Receita, ROAS &amp; CPA</th></tr></thead><tbody>{res_rows}
         <tr class="row-total"><td>CONSOLIDADO PURO CROSS-DEVICE (Sem TV ∩ TV)</td><td class="num">{fmt_curr(blk['cost'])}</td><td class="num">{fmt_dec(blk['std_conversions'], 1)} comp.</td><td class="num">{fmt_int(blk['p2c_solo_conversions'])} comp.</td><td class="num">{fmt_dec(blk['intersecao_compras_1plus'], 1)} comp.</td><td class="num">{fmt_dec(blk['total_attributed_conversions'], 1)} comp. ({fmt_pct(blk['share_campaign_attributed_pct'])})</td><td class="num">+{fmt_curr(blk['aov_premium_revenue'])}</td><td class="num">{fmt_curr(blk['total_attributed_revenue'])} (ROAS {fmt_dec(blk['roas_attributed'])}x)</td></tr>
         <tr class="row-raw"><td>SENSIBILIDADE: SOMA BRUTA SITES (Com TV ∩ TV)</td><td class="num">{fmt_curr(blk['cost'])}</td><td class="num">{fmt_dec(blk['std_conversions'], 1)} comp.</td><td class="num">{fmt_int(blk['p2c_solo_conversions'])} comp.</td><td class="num">{fmt_dec(blk['raw_intersecao_compras_1plus'], 1)} comp.</td><td class="num">{fmt_dec(blk['raw_total_attributed_conversions'], 1)} comp. ({fmt_pct(blk['raw_share_campaign_attributed_pct'])})</td><td class="num">—</td><td class="num">{fmt_curr(blk['raw_total_attributed_revenue'])} (ROAS {fmt_dec(blk['raw_roas_attributed'])}x)</td></tr>
-        </tbody></table></div><div class="table-foot-math">Como calculamos: Compras Atribuídas = Solo P2C + (Interseção Pura × Economia de Toques Δ%) | Receita = Receita Solo + (Compras Assistidas × AOV Base Controle) + Prêmio AOV (R$) | ROAS = Receita ÷ Custo TV+STB. Nota financeira: superar 1,0x de ROAS significa gerar mais receita atribuída do que o custo de mídia investido no veículo (não equivale a lucro líquido contábil).</div></div>
+        </tbody></table></div><div class="table-foot-math">Como calculamos: Compras Atribuídas = Solo P2C + (Interseção Pura × AF_e CVR Produto→Compra, teto 50%) | Receita = Receita Solo + (Compras Assistidas × AOV Base Controle) + Prêmio AOV (R$) | ROAS = Receita ÷ Custo TV+STB. Nota financeira: superar 1,0x de ROAS significa gerar mais receita atribuída do que o custo de mídia investido no veículo (não equivale a lucro líquido contábil).</div></div>
       </section>
 
       <section class="slide-card slide-hidden">

@@ -21,6 +21,16 @@
       "ID_FLOODLIGHT_COMPRA_WEB": "Web (Compra Confirmada)",
       "ID_FLOODLIGHT_IN_APP_PURCHASE_IOS": "iOS (in_app_purchase)",
       "ID_FLOODLIGHT_IN_APP_PURCHASE_ANDROID": "Android (in_app_purchase)"
+    },
+    "product_activity_ids": [
+      "ID_FLOODLIGHT_PRODUTO_WEB",
+      "ID_FLOODLIGHT_VIEW_ITEM_IOS",
+      "ID_FLOODLIGHT_VIEW_ITEM_ANDROID"
+    ],
+    "product_activity_labels": {
+      "ID_FLOODLIGHT_PRODUTO_WEB": "Web Produto (Visualizacao de Produto)",
+      "ID_FLOODLIGHT_VIEW_ITEM_IOS": "iOS Produto (view_item)",
+      "ID_FLOODLIGHT_VIEW_ITEM_ANDROID": "Android Produto (view_item)"
     }
   },
   "dv360": {

@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from common import (
+    classify_product_tag,
     clean_id_str,
     clean_num,
     fmt_curr,
@@ -27,6 +28,9 @@ from common import (
 CTV_PLATFORM_NAMES = {"Connected TV", "Set top box"}
 PURE_CTV_PLACEMENT_THRESHOLD = 0.95
 MIN_MEANINGFUL_CTV_IMPS = 1000.0
+MAX_SHARED_ATTRIBUTION_PCT = 50.0
+MIN_CVR_PURCHASES = 5.0
+MIN_CVR_PROD_VIEWS = 30.0
 
 
 def _report_file(out_dir: Path, raw_path: str) -> Path:
@@ -216,6 +220,122 @@ def _analyze_p2c(p2c_path: Path, camp_id: str, norm_kw: str, purchase_ids: list[
     }
 
 
+def _compute_funnel_cvr_efficiency(
+    df_fl_all: pd.DataFrame,
+    purchase_ids: list[int],
+    product_ids: list[int],
+    mode: str,
+    plc_ctv_share: dict[str, float] | None = None,
+    fallback_lift_val_pct: float = 0.0,
+) -> dict:
+    df = df_fl_all.copy()
+    df["site_clean"] = df["Site (CM360)"].fillna("").astype(str).str.strip()
+    if not product_ids and "Activity" in df.columns:
+        discovered = [
+            int(r["Activity ID"])
+            for _, r in df[["Activity ID", "Activity"]].drop_duplicates().iterrows()
+            if int(r["Activity ID"]) not in purchase_ids and classify_product_tag(str(r["Activity"]))[0]
+        ]
+        product_ids = sorted(set(discovered))
+
+    has_ev_plat = "Attributed Event Platform Type" in df.columns
+    if mode == "site":
+        df["ctv_w"] = df["site_clean"].str.lower().str.contains("ctv").astype(float)
+    elif has_ev_plat:
+        ev_plat = df["Attributed Event Platform Type"].fillna("Unknown platform").astype(str).str.strip()
+        df["ctv_w"] = ev_plat.isin(CTV_PLATFORM_NAMES).astype(float)
+    else:
+        plc_col = clean_id_str(df["Placement ID"]) if "Placement ID" in df.columns else pd.Series([""] * len(df), index=df.index)
+        df["ctv_w"] = plc_col.map(lambda p: float((plc_ctv_share or {}).get(p, 0.0)))
+    df["nonctv_w"] = (1.0 - df["ctv_w"]).clip(lower=0.0)
+
+    df_purc = df[df["Activity ID"].isin(purchase_ids)]
+    df_prod = df[df["Activity ID"].isin(product_ids)] if product_ids else df.iloc[0:0]
+
+    nonctv_purc = float((df_purc["Total Conversions"] * df_purc["nonctv_w"]).sum())
+    nonctv_prod = float((df_prod["Total Conversions"] * df_prod["nonctv_w"]).sum()) if not df_prod.empty else 0.0
+    ctv_purc = float((df_purc["Total Conversions"] * df_purc["ctv_w"]).sum())
+    ctv_prod = float((df_prod["Total Conversions"] * df_prod["ctv_w"]).sum()) if not df_prod.empty else 0.0
+
+    if nonctv_prod > 0:
+        metric_source = "cvr_produto_compra"
+        cvr_nonctv = (nonctv_purc / nonctv_prod) * 100.0
+        cvr_ctv = (ctv_purc / ctv_prod * 100.0) if ctv_prod > 0 else 0.0
+        raw_blk_afe = max(0.0, (cvr_ctv - cvr_nonctv) / cvr_ctv * 100.0) if cvr_ctv > 0 else 0.0
+    else:
+        metric_source = "fallback_aov_lift_sem_tag_produto"
+        cvr_nonctv, cvr_ctv = 0.0, 0.0
+        raw_blk_afe = max(0.0, fallback_lift_val_pct)
+
+    capped_blk_afe = min(MAX_SHARED_ATTRIBUTION_PCT, raw_blk_afe)
+    blk_cap = raw_blk_afe > MAX_SHARED_ATTRIBUTION_PCT
+
+    site_purc_map = (
+        df_purc.assign(_w=df_purc["Total Conversions"] * df_purc["ctv_w"]).groupby("site_clean")["_w"].sum().to_dict()
+        if not df_purc.empty else {}
+    )
+    site_prod_map = (
+        df_prod.assign(_w=df_prod["Total Conversions"] * df_prod["ctv_w"]).groupby("site_clean")["_w"].sum().to_dict()
+        if not df_prod.empty else {}
+    )
+
+    def for_site(s: str) -> dict:
+        sp = float(site_purc_map.get(s, 0.0))
+        sv = float(site_prod_map.get(s, 0.0))
+        scvr = (sp / sv * 100.0) if sv > 0 else 0.0
+        if metric_source == "cvr_produto_compra" and sp >= MIN_CVR_PURCHASES and sv >= MIN_CVR_PROD_VIEWS and cvr_nonctv > 0:
+            r_afe = max(0.0, (scvr - cvr_nonctv) / scvr * 100.0) if scvr > 0 else 0.0
+            c_afe = min(MAX_SHARED_ATTRIBUTION_PCT, r_afe)
+            return {
+                "prod_views": sv, "purchases": sp, "cvr_pct": scvr,
+                "raw_afe_pct": r_afe, "capped_afe_pct": c_afe,
+                "cap_applied": r_afe > MAX_SHARED_ATTRIBUTION_PCT,
+                "source": "cvr_direto_canal",
+            }
+        return {
+            "prod_views": sv, "purchases": sp, "cvr_pct": scvr,
+            "raw_afe_pct": raw_blk_afe, "capped_afe_pct": capped_blk_afe,
+            "cap_applied": blk_cap,
+            "source": "bloco_ctv_campanha" if metric_source == "cvr_produto_compra" else metric_source,
+        }
+
+    return {
+        "metric_source": metric_source,
+        "has_event_platform_type": has_ev_plat,
+        "product_ids": product_ids,
+        "nonctv_prod": nonctv_prod,
+        "nonctv_purc": nonctv_purc,
+        "cvr_nonctv_pct": cvr_nonctv,
+        "ctv_prod": ctv_prod,
+        "ctv_purc": ctv_purc,
+        "cvr_ctv_pct": cvr_ctv,
+        "raw_blk_afe_pct": raw_blk_afe,
+        "capped_blk_afe_pct": capped_blk_afe,
+        "blk_cap_applied": blk_cap,
+        "for_site": for_site,
+        "summary": {
+            "metric_source": metric_source,
+            "has_event_platform_type": has_ev_plat,
+            "product_activity_ids": [str(x) for x in product_ids],
+            "max_shared_attribution_cap_pct": MAX_SHARED_ATTRIBUTION_PCT,
+            "non_ctv_base": {
+                "product_views": nonctv_prod,
+                "purchases": nonctv_purc,
+                "cvr_pct": cvr_nonctv,
+            },
+            "ctv_block": {
+                "product_views": ctv_prod,
+                "purchases": ctv_purc,
+                "cvr_pct": cvr_ctv,
+                "cvr_lift_mult": (cvr_ctv / cvr_nonctv) if cvr_nonctv > 0 else 1.0,
+                "raw_afe_pct": raw_blk_afe,
+                "capped_afe_pct": capped_blk_afe,
+                "cap_applied": blk_cap,
+            },
+        },
+    }
+
+
 def _value_channel(solo_convs: float, solo_rev: float, intersecao_compras: float, lift_efic_pct: float,
                    aov_with_ctv: float, base_ctrl_aov: float, cost: float, p2c_total_convs: float) -> dict:
     aov_delta_brl = max(0.0, aov_with_ctv - base_ctrl_aov)
@@ -278,11 +398,15 @@ def _compute_site_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
     camp_name = cm_cfg["campaign_name"]
     norm_kw = cm_cfg.get("brand_keyword_normalized") or norm_slug(camp_name)
     purchase_ids = [int(x) for x in cm_cfg["purchase_activity_ids"]]
+    product_ids = [int(x) for x in cm_cfg.get("product_activity_ids", []) if str(x).strip().isdigit()]
     sd, ed = cfg["date_window"]["start_date"], cfg["date_window"]["end_date"]
 
     rpts = manifest["cm360_reports"]
     std_key = "std_site_cost_conv" if "std_site_cost_conv" in rpts else "std_device_site_placement_ad"
-    fl_key = "std_floodlight_activities" if "std_floodlight_activities" in rpts else "std_device_floodlights"
+    fl_key = (
+        "std_event_platform_floodlights" if "std_event_platform_floodlights" in rpts
+        else ("std_floodlight_activities" if "std_floodlight_activities" in rpts else "std_device_floodlights")
+    )
     cov_key = "reach_site_coviewed" if "reach_site_coviewed" in rpts else "reach_site_all_coviewed"
     ovl_key = "reach_site_overlap" if "reach_site_overlap" in rpts else "reach_site_overlap_all"
     p2c_key = "p2c_14d" if "p2c_14d" in rpts else "p2c_14d_device_enriched"
@@ -293,12 +417,13 @@ def _compute_site_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
         if col in df_cost.columns:
             df_cost[col] = clean_num(df_cost[col]).fillna(0.0)
 
-    df_fl = read_cm360_csv(_report_file(out_dir, rpts[fl_key]["path"]))
-    df_fl["Activity ID"] = clean_num(df_fl["Activity ID"]).fillna(-1).astype(int)
-    df_fl = df_fl[(clean_id_str(df_fl["Campaign ID"]) == camp_id) & (df_fl["Activity ID"].isin(purchase_ids))].copy()
+    df_fl_all = read_cm360_csv(_report_file(out_dir, rpts[fl_key]["path"]))
+    df_fl_all["Activity ID"] = clean_num(df_fl_all["Activity ID"]).fillna(-1).astype(int)
+    df_fl_all = df_fl_all[clean_id_str(df_fl_all["Campaign ID"]) == camp_id].copy()
     for col in ["Total Conversions", "Total Revenue", "View-through Conversions", "Click-through Conversions"]:
-        if col in df_fl.columns:
-            df_fl[col] = clean_num(df_fl[col]).fillna(0.0)
+        if col in df_fl_all.columns:
+            df_fl_all[col] = clean_num(df_fl_all[col]).fillna(0.0)
+    df_fl = df_fl_all[df_fl_all["Activity ID"].isin(purchase_ids)].copy()
 
     df_sites = pd.merge(
         df_cost.groupby("Site (CM360)", as_index=False).agg(
@@ -330,6 +455,9 @@ def _compute_site_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
     )
     cid_stats, t_conv_df = p2c["cid_stats"], p2c["target_conv_df"]
     ctrl_all, ctrl_camp, combo_all, combo_camp = p2c["ctrl_all"], p2c["ctrl_camp"], p2c["combo_all"], p2c["combo_camp"]
+    cvr_eff = _compute_funnel_cvr_efficiency(
+        df_fl_all, purchase_ids, product_ids, mode="site", fallback_lift_val_pct=p2c["blk_lift_val"],
+    )
 
     std_tot_cost = float(df_sites["effective_cost"].sum())
     std_tot_imps = float(df_sites["impressions"].sum())
@@ -366,11 +494,8 @@ def _compute_site_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
         c_camp_aov = (c_camp_rev / c_camp_convs) if c_camp_convs > 0 else c_all_aov
         c_camp_touches = float(df_c_camp["non_ctv_touches_camp"].mean()) if len(df_c_camp) > 0 else c_all_touches
 
-        lift_efic = (
-            max(0.0, (ctrl_all["avg_non_ctv_touches"] - c_all_touches) / ctrl_all["avg_non_ctv_touches"] * 100.0)
-            if (c_all_convs >= 5 and ctrl_all["avg_non_ctv_touches"] > 0)
-            else p2c["blk_lift_efic"]
-        )
+        s_cvr = cvr_eff["for_site"](s)
+        lift_efic = s_cvr["capped_afe_pct"]
         base_ctrl_aov = ctrl_camp["aov"] if ctrl_camp["conversions"] >= 5 else ctrl_all["aov"]
         if c_camp_convs >= 5:
             aov_with_ctv = c_camp_aov
@@ -385,6 +510,7 @@ def _compute_site_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
         val = _value_channel(solo_convs, solo_rev, intersecao_compras, lift_efic, aov_with_ctv, base_ctrl_aov, s_cost, p2c["p2c_conversions"])
         ctv_channels.append({
             "site": s,
+            "lift_calibration_source": s_cvr["source"],
             "cost": s_cost,
             "cost_share_pct": (s_cost / std_tot_cost * 100.0) if std_tot_cost > 0 else 0.0,
             "impressions": s_imps,
@@ -396,6 +522,11 @@ def _compute_site_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
             "std_ct_conversions": float(row_s["std_ct_conversions"]),
             "std_revenue": float(row_s["std_revenue"]),
             "std_share_pct": (float(row_s["std_conversions"]) / std_tot_convs * 100.0) if std_tot_convs > 0 else 0.0,
+            "prod_views": s_cvr["prod_views"],
+            "purc_std_for_cvr": s_cvr["purchases"],
+            "cvr_prod_to_purc_pct": s_cvr["cvr_pct"],
+            "raw_afe_pct": s_cvr["raw_afe_pct"],
+            "afe_cap_applied": s_cvr["cap_applied"],
             "unique_reach": u_reach,
             "coviewed_reach": c_reach,
             "coview_factor": cov_factor,
@@ -460,10 +591,12 @@ def _compute_site_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
             "agency_name": cfg["agency_name"],
             "identification_mode": "site",
             "naming_detected": bool(len(ctv_channels) > 0),
+            "has_event_platform_type": cvr_eff["has_event_platform_type"],
             "campaign_id": camp_id,
             "campaign_name": camp_name,
             "advertiser_id": str(cm_cfg["advertiser_id"]),
             "purchase_activity_labels": cm_cfg.get("purchase_activity_labels", {}),
+            "product_activity_labels": cm_cfg.get("product_activity_labels", {}),
             "start_date": sd,
             "end_date": ed,
             "generated_at_utc": manifest["generated_at_utc"],
@@ -488,6 +621,7 @@ def _compute_site_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
             "p2c_total_aov": p2c["p2c_aov"],
             "p2c_shared_other_agency_journeys": len(p2c["shared_cids"]),
         },
+        "funnel_cvr_efficiency": cvr_eff["summary"],
         "p2c_control_vs_ctv": {
             "control_multi_no_ctv_all": ctrl_all,
             "control_multi_no_ctv_camp": ctrl_camp,
@@ -498,7 +632,10 @@ def _compute_site_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
                 "camp_aov": combo_camp["aov"],
                 "camp_avg_non_ctv_touches": combo_camp["avg_non_ctv_touches"],
                 "lift_valor_pct": p2c["blk_lift_val"],
-                "lift_efic_pct": p2c["blk_lift_efic"],
+                "lift_efic_pct": cvr_eff["capped_blk_afe_pct"],
+                "raw_afe_pct": cvr_eff["raw_blk_afe_pct"],
+                "afe_cap_applied": cvr_eff["blk_cap_applied"],
+                "legacy_touch_reduction_pct": p2c["blk_lift_efic"],
             },
         },
         "ctv_block_consolidated": {
@@ -546,6 +683,7 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
     camp_name = cm_cfg["campaign_name"]
     norm_kw = cm_cfg.get("brand_keyword_normalized") or norm_slug(camp_name)
     purchase_ids = [int(x) for x in cm_cfg["purchase_activity_ids"]]
+    product_ids = [int(x) for x in cm_cfg.get("product_activity_ids", []) if str(x).strip().isdigit()]
     sd, ed = cfg["date_window"]["start_date"], cfg["date_window"]["end_date"]
 
     df_std = read_cm360_csv(_report_file(out_dir, manifest["cm360_reports"]["std_device_site_placement_ad"]["path"]))
@@ -561,14 +699,25 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
     df_std["is_smart_tv"] = df_std["Platform Type"] == "Connected TV"
     df_std["is_stb"] = df_std["Platform Type"] == "Set top box"
 
-    df_fl = read_cm360_csv(_report_file(out_dir, manifest["cm360_reports"]["std_device_floodlights"]["path"]))
-    df_fl["Activity ID"] = clean_num(df_fl["Activity ID"]).fillna(-1).astype(int)
-    df_fl = df_fl[(clean_id_str(df_fl["Campaign ID"]) == camp_id) & (df_fl["Activity ID"].isin(purchase_ids))].copy()
+    df_fl_dev_all = read_cm360_csv(_report_file(out_dir, manifest["cm360_reports"]["std_device_floodlights"]["path"]))
+    df_fl_dev_all["Activity ID"] = clean_num(df_fl_dev_all["Activity ID"]).fillna(-1).astype(int)
+    df_fl_dev_all = df_fl_dev_all[clean_id_str(df_fl_dev_all["Campaign ID"]) == camp_id].copy()
+    for col in ["Total Conversions", "Total Revenue", "View-through Conversions", "Click-through Conversions"]:
+        if col in df_fl_dev_all.columns:
+            df_fl_dev_all[col] = clean_num(df_fl_dev_all[col]).fillna(0.0)
+    df_fl = df_fl_dev_all[df_fl_dev_all["Activity ID"].isin(purchase_ids)].copy()
     df_fl["plc_id_str"] = clean_id_str(df_fl["Placement ID"])
     df_fl["checkout_platform"] = df_fl["Platform Type"].fillna("Unknown platform").astype(str).str.strip()
-    for col in ["Total Conversions", "Total Revenue", "View-through Conversions", "Click-through Conversions"]:
-        if col in df_fl.columns:
-            df_fl[col] = clean_num(df_fl[col]).fillna(0.0)
+
+    has_ev_rpt = "std_event_platform_floodlights" in manifest["cm360_reports"]
+    df_ev_all = None
+    if has_ev_rpt:
+        df_ev_all = read_cm360_csv(_report_file(out_dir, manifest["cm360_reports"]["std_event_platform_floodlights"]["path"]))
+        df_ev_all["Activity ID"] = clean_num(df_ev_all["Activity ID"]).fillna(-1).astype(int)
+        df_ev_all = df_ev_all[clean_id_str(df_ev_all["Campaign ID"]) == camp_id].copy()
+        for col in ["Total Conversions", "Total Revenue", "View-through Conversions", "Click-through Conversions"]:
+            if col in df_ev_all.columns:
+                df_ev_all[col] = clean_num(df_ev_all[col]).fillna(0.0)
 
     plc_tot_imps = df_std.groupby("plc_id_str")["Impressions"].sum().to_dict()
     plc_tot_clks = df_std.groupby("plc_id_str")["Clicks"].sum().to_dict()
@@ -595,23 +744,54 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
         )
     plc_ctv_share = plc_plat_grp[plc_plat_grp["Platform Type"].isin(CTV_PLATFORM_NAMES)].groupby("plc_id_str")["plat_imp_share"].sum().to_dict()
 
-    fl_by_plc = df_fl.groupby(["Site (CM360)", "plc_id_str"], as_index=False).agg(
-        tot_conv=("Total Conversions", "sum"), vt_conv=("View-through Conversions", "sum"),
-        ct_conv=("Click-through Conversions", "sum"), tot_rev=("Total Revenue", "sum"),
-    )
-    fl_by_plc["ctv_share"] = fl_by_plc["plc_id_str"].map(lambda p: plc_ctv_share.get(p, 0.0))
-    for k_out, k_in in [("ctv_std_conversions", "tot_conv"), ("ctv_std_vt", "vt_conv"), ("ctv_std_ct", "ct_conv"), ("ctv_std_revenue", "tot_rev")]:
-        fl_by_plc[k_out] = fl_by_plc[k_in] * fl_by_plc["ctv_share"]
-
-    fl_plat_alloc = pd.merge(fl_by_plc, plc_plat_grp[["plc_id_str", "Platform Type", "plat_imp_share"]], on="plc_id_str", how="left")
-    for k_out, k_in in [("imp_std_conversions", "tot_conv"), ("imp_std_vt", "vt_conv"), ("imp_std_ct", "ct_conv"), ("imp_std_revenue", "tot_rev")]:
-        fl_plat_alloc[k_out] = fl_plat_alloc[k_in] * fl_plat_alloc["plat_imp_share"]
+    if has_ev_rpt:
+        df_ev_purc = df_ev_all[df_ev_all["Activity ID"].isin(purchase_ids)].copy()
+        df_ev_purc["imp_platform"] = df_ev_purc["Attributed Event Platform Type"].fillna("Unknown platform").astype(str).str.strip()
+        df_ev_purc["is_ctv_ev"] = df_ev_purc["imp_platform"].isin(CTV_PLATFORM_NAMES)
+        df_imp_plat_sum = df_ev_purc.groupby("imp_platform", as_index=False).agg(
+            std_conversions=("Total Conversions", "sum"),
+            std_vt=("View-through Conversions", "sum"),
+            std_ct=("Click-through Conversions", "sum"),
+            std_revenue=("Total Revenue", "sum"),
+        ).rename(columns={"imp_platform": "Platform Type"})
+        df_site_fl_sum = df_ev_purc.groupby("Site (CM360)", as_index=False).agg(
+            site_total_std_conversions=("Total Conversions", "sum"),
+            site_total_std_vt=("View-through Conversions", "sum"),
+            site_total_std_revenue=("Total Revenue", "sum"),
+            ctv_std_conversions=("Total Conversions", lambda x: x[df_ev_purc.loc[x.index, "is_ctv_ev"]].sum()),
+            ctv_std_vt=("View-through Conversions", lambda x: x[df_ev_purc.loc[x.index, "is_ctv_ev"]].sum()),
+            ctv_std_ct=("Click-through Conversions", lambda x: x[df_ev_purc.loc[x.index, "is_ctv_ev"]].sum()),
+            ctv_std_revenue=("Total Revenue", lambda x: x[df_ev_purc.loc[x.index, "is_ctv_ev"]].sum()),
+        )
+        ev_plat_set = set(df_ev_purc["imp_platform"].unique())
+        std_tot_convs = float(df_ev_purc["Total Conversions"].sum())
+        std_tot_rev = float(df_ev_purc["Total Revenue"].sum())
+    else:
+        fl_by_plc = df_fl.groupby(["Site (CM360)", "plc_id_str"], as_index=False).agg(
+            tot_conv=("Total Conversions", "sum"), vt_conv=("View-through Conversions", "sum"),
+            ct_conv=("Click-through Conversions", "sum"), tot_rev=("Total Revenue", "sum"),
+        )
+        fl_by_plc["ctv_share"] = fl_by_plc["plc_id_str"].map(lambda p: plc_ctv_share.get(p, 0.0))
+        for k_out, k_in in [("ctv_std_conversions", "tot_conv"), ("ctv_std_vt", "vt_conv"), ("ctv_std_ct", "ct_conv"), ("ctv_std_revenue", "tot_rev")]:
+            fl_by_plc[k_out] = fl_by_plc[k_in] * fl_by_plc["ctv_share"]
+        fl_plat_alloc = pd.merge(fl_by_plc, plc_plat_grp[["plc_id_str", "Platform Type", "plat_imp_share"]], on="plc_id_str", how="left")
+        for k_out, k_in in [("imp_std_conversions", "tot_conv"), ("imp_std_vt", "vt_conv"), ("imp_std_ct", "ct_conv"), ("imp_std_revenue", "tot_rev")]:
+            fl_plat_alloc[k_out] = fl_plat_alloc[k_in] * fl_plat_alloc["plat_imp_share"]
+        df_imp_plat_sum = fl_plat_alloc.groupby("Platform Type", as_index=False).agg(
+            std_conversions=("imp_std_conversions", "sum"), std_vt=("imp_std_vt", "sum"),
+            std_ct=("imp_std_ct", "sum"), std_revenue=("imp_std_revenue", "sum"),
+        )
+        df_site_fl_sum = fl_by_plc.groupby("Site (CM360)", as_index=False).agg(
+            site_total_std_conversions=("tot_conv", "sum"), site_total_std_vt=("vt_conv", "sum"), site_total_std_revenue=("tot_rev", "sum"),
+            ctv_std_conversions=("ctv_std_conversions", "sum"), ctv_std_vt=("ctv_std_vt", "sum"), ctv_std_ct=("ctv_std_ct", "sum"), ctv_std_revenue=("ctv_std_revenue", "sum"),
+        )
+        ev_plat_set = set()
+        std_tot_convs = float(df_fl["Total Conversions"].sum())
+        std_tot_rev = float(df_fl["Total Revenue"].sum())
 
     std_tot_cost = float(df_std["effective_cost"].sum())
     std_tot_imps = float(df_std["Impressions"].sum())
     std_tot_clicks = float(df_std["Clicks"].sum())
-    std_tot_convs = float(df_fl["Total Conversions"].sum())
-    std_tot_rev = float(df_fl["Total Revenue"].sum())
 
     camp_reach_dev, camp_reach_cov, camp_freq, camp_freq_cov = _parse_reach_totals(_report_file(out_dir, manifest["cm360_reports"]["reach_campaign_total"]["path"]))
     ctv_blk_dev, ctv_blk_cov, ctv_blk_freq, _ = _parse_reach_totals(_report_file(out_dir, manifest["cm360_reports"]["reach_ctv_devices_block"]["path"]))
@@ -634,12 +814,12 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
     }
 
     base_plats = ["Connected TV", "Set top box", "Smartphone", "Desktop", "Tablet", "Mobile midrange: feature phone", "Unknown platform"]
-    extra_plats = sorted((set(df_std["Platform Type"].unique()) | set(df_fl["checkout_platform"].unique())) - set(base_plats))
+    extra_plats = sorted((set(df_std["Platform Type"].unique()) | set(df_fl["checkout_platform"].unique()) | ev_plat_set) - set(base_plats))
     all_plats = pd.DataFrame({"Platform Type": base_plats + extra_plats})
     df_plat_sum = (
         all_plats
         .merge(df_std.groupby("Platform Type", as_index=False).agg(impressions=("Impressions", "sum"), clicks=("Clicks", "sum"), cost=("effective_cost", "sum")), on="Platform Type", how="left")
-        .merge(fl_plat_alloc.groupby("Platform Type", as_index=False).agg(std_conversions=("imp_std_conversions", "sum"), std_vt=("imp_std_vt", "sum"), std_ct=("imp_std_ct", "sum"), std_revenue=("imp_std_revenue", "sum")), on="Platform Type", how="left")
+        .merge(df_imp_plat_sum, on="Platform Type", how="left")
         .merge(df_fl.groupby("checkout_platform", as_index=False).agg(checkout_std_conversions=("Total Conversions", "sum"), checkout_std_revenue=("Total Revenue", "sum")).rename(columns={"checkout_platform": "Platform Type"}), on="Platform Type", how="left")
         .fillna(0.0)
     )
@@ -723,6 +903,14 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
     )
     cid_stats, t_conv_df = p2c["cid_stats"], p2c["target_conv_df"]
     ctrl_all, ctrl_camp, combo_all, combo_camp = p2c["ctrl_all"], p2c["ctrl_camp"], p2c["combo_all"], p2c["combo_camp"]
+    cvr_eff = _compute_funnel_cvr_efficiency(
+        df_ev_all if has_ev_rpt else df_fl_dev_all,
+        purchase_ids,
+        product_ids,
+        mode="device",
+        plc_ctv_share=plc_ctv_share,
+        fallback_lift_val_pct=p2c["blk_lift_val"],
+    )
     t_only = p2c["target_touches"][p2c["target_touches"]["is_target_camp"]]
     purity_audit = {
         "pure_ctv_touches_ge_95pct": int((t_only["ctv_device_prob"] >= PURE_CTV_PLACEMENT_THRESHOLD).sum()),
@@ -732,10 +920,7 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
 
     df_all_sites = (
         df_std.groupby("Site (CM360)", as_index=False).agg(site_total_impressions=("Impressions", "sum"), site_total_clicks=("Clicks", "sum"), site_total_cost=("effective_cost", "sum"))
-        .merge(fl_by_plc.groupby("Site (CM360)", as_index=False).agg(
-            site_total_std_conversions=("tot_conv", "sum"), site_total_std_vt=("vt_conv", "sum"), site_total_std_revenue=("tot_rev", "sum"),
-            ctv_std_conversions=("ctv_std_conversions", "sum"), ctv_std_vt=("ctv_std_vt", "sum"), ctv_std_ct=("ctv_std_ct", "sum"), ctv_std_revenue=("ctv_std_revenue", "sum"),
-        ), on="Site (CM360)", how="outer")
+        .merge(df_site_fl_sum, on="Site (CM360)", how="outer")
         .merge(df_std[df_std["is_ctv_device"]].groupby("Site (CM360)", as_index=False).agg(
             ctv_impressions=("Impressions", "sum"),
             smart_tv_impressions=("Impressions", lambda x: x[df_std.loc[x.index, "is_smart_tv"]].sum()),
@@ -749,7 +934,7 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
     )
 
     ctv_sites_sorted = sorted(df_all_sites[df_all_sites["ctv_impressions"] > 0]["Site (CM360)"].tolist(), key=lambda s: ("ctv" not in s.lower(), s))
-    yt_ref_lift, yt_ref_aov = None, None
+    yt_ref_aov = None
     raw_records = []
 
     for s in ctv_sites_sorted:
@@ -776,12 +961,8 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
         c_camp_aov = (c_camp_rev / c_camp_convs) if c_camp_convs > 0 else c_all_aov
         base_ctrl_aov = ctrl_camp["aov"] if ctrl_camp["conversions"] >= 5 else ctrl_all["aov"]
 
-        if c_all_convs >= 5 and ctrl_all["avg_non_ctv_touches"] > 0:
-            lift_efic, lift_src = max(0.0, (ctrl_all["avg_non_ctv_touches"] - c_all_touches) / ctrl_all["avg_non_ctv_touches"] * 100.0), "p2c_placement_puro_direto"
-        elif "youtube" in s.lower() and yt_ref_lift is not None:
-            lift_efic, lift_src = yt_ref_lift, "benchmark_youtube_ctv_puro_mesma_campanha"
-        else:
-            lift_efic, lift_src = p2c["blk_lift_efic"], "bloco_ctv_devices_campanha"
+        s_cvr = cvr_eff["for_site"](s)
+        lift_efic, lift_src = s_cvr["capped_afe_pct"], s_cvr["source"]
 
         if c_camp_convs >= 5:
             aov_with_ctv, lift_val_spec = c_camp_aov, max(0.0, (c_camp_aov - base_ctrl_aov) / c_camp_aov * 100.0)
@@ -794,7 +975,7 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
             lift_val_spec = p2c["blk_lift_val"]
 
         if "youtubectv" in norm_slug(s) and c_all_convs >= 5:
-            yt_ref_lift, yt_ref_aov = lift_efic, aov_with_ctv
+            yt_ref_aov = aov_with_ctv
 
         raw_records.append({
             "site": s, "is_residual": float(row_s["ctv_impressions"]) < MIN_MEANINGFUL_CTV_IMPS, "row_s": row_s,
@@ -803,6 +984,8 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
             "intra_site_overlap": intra_ovl, "raw_dupl_1p": raw_dupl, "solo_convs": solo_convs, "solo_rev": solo_rev,
             "combo_all_convs": c_all_convs, "combo_all_nonctv_touches": c_all_touches, "combo_camp_convs": c_camp_convs,
             "aov_with_ctv": aov_with_ctv, "base_ctrl_aov": base_ctrl_aov, "s_lift_valor_specific": lift_val_spec,
+            "prod_views": s_cvr["prod_views"], "purc_std_for_cvr": s_cvr["purchases"], "cvr_pct": s_cvr["cvr_pct"],
+            "raw_afe_pct": s_cvr["raw_afe_pct"], "afe_cap_applied": s_cvr["cap_applied"],
             "lift_efic_pct": lift_efic, "lift_source": lift_src,
         })
 
@@ -812,6 +995,8 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
         r_names = "/".join(r["site"].replace("DV360_", "").replace("DV360-", "").replace(" BR", "") for r in resid_recs)
         thr_lbl = "1.000" if max(float(r["row_s"]["ctv_impressions"]) for r in resid_recs) >= 500.0 else "500"
         u_res, c_res = sum(r["u_reach_ctv"] for r in resid_recs), sum(r["c_reach_ctv"] for r in resid_recs)
+        res_prod = sum(r["prod_views"] for r in resid_recs)
+        res_purc = sum(r["purc_std_for_cvr"] for r in resid_recs)
         cols_sum = ["ctv_cost", "smart_tv_cost", "stb_cost", "site_total_cost", "ctv_impressions", "smart_tv_impressions",
                     "stb_impressions", "site_total_impressions", "ctv_clicks", "ctv_std_conversions", "ctv_std_vt", "ctv_std_ct", "ctv_std_revenue"]
         main_recs.append({
@@ -825,7 +1010,11 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
             "combo_all_convs": 0.0, "combo_all_nonctv_touches": combo_all["avg_non_ctv_touches"], "combo_camp_convs": 0.0,
             "aov_with_ctv": combo_camp["aov"] if combo_camp["conversions"] >= 5 else combo_all["aov"],
             "base_ctrl_aov": ctrl_camp["aov"] if ctrl_camp["conversions"] >= 5 else ctrl_all["aov"],
-            "s_lift_valor_specific": p2c["blk_lift_val"], "lift_efic_pct": p2c["blk_lift_efic"], "lift_source": "bloco_ctv_devices_campanha",
+            "s_lift_valor_specific": p2c["blk_lift_val"],
+            "prod_views": res_prod, "purc_std_for_cvr": res_purc,
+            "cvr_pct": (res_purc / res_prod * 100.0) if res_prod > 0 else 0.0,
+            "raw_afe_pct": cvr_eff["raw_blk_afe_pct"], "afe_cap_applied": cvr_eff["blk_cap_applied"],
+            "lift_efic_pct": cvr_eff["capped_blk_afe_pct"], "lift_source": "bloco_ctv_campanha",
         })
 
     tot_raw_dupl = sum(r["raw_dupl_1p"] for r in main_recs)
@@ -869,6 +1058,11 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
             "std_vt_conversions": float(row_s["ctv_std_vt"]),
             "std_ct_conversions": float(row_s["ctv_std_ct"]),
             "std_revenue": float(row_s["ctv_std_revenue"]),
+            "prod_views": rec["prod_views"],
+            "purc_std_for_cvr": rec["purc_std_for_cvr"],
+            "cvr_prod_to_purc_pct": rec["cvr_pct"],
+            "raw_afe_pct": rec["raw_afe_pct"],
+            "afe_cap_applied": rec["afe_cap_applied"],
             "unique_reach": u_ctv,
             "smart_tv_reach": rec["smart_tv_rch"],
             "stb_reach": rec["stb_rch"],
@@ -994,9 +1188,11 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
             "brand_name": cfg["brand_name"],
             "agency_name": cfg["agency_name"],
             "identification_mode": "device",
+            "has_event_platform_type": has_ev_rpt,
             "campaign_id": camp_id,
             "campaign_name": camp_name,
             "purchase_activity_labels": cm_cfg.get("purchase_activity_labels", {}),
+            "product_activity_labels": cm_cfg.get("product_activity_labels", {}),
             "start_date": sd,
             "end_date": ed,
             "generated_at_utc": manifest["generated_at_utc"],
@@ -1012,6 +1208,7 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
             "p2c_total_revenue": p2c["p2c_revenue"], "p2c_total_aov": p2c["p2c_aov"],
             "p2c_shared_other_agency_journeys": len(p2c["shared_cids"]),
         },
+        "funnel_cvr_efficiency": cvr_eff["summary"],
         "platform_breakdown": platform_breakdown,
         "checkout_device_breakdown": p2c["checkout_breakdown"],
         "p2c_touch_purity_audit": purity_audit,
@@ -1038,7 +1235,10 @@ def _compute_device_mode(cfg: dict, manifest: dict, out_dir: Path) -> str:
                 "camp_conversions": combo_camp["conversions"],
                 "camp_aov": combo_camp["aov"],
                 "lift_valor_pct": p2c["blk_lift_val"],
-                "lift_efic_pct": p2c["blk_lift_efic"],
+                "lift_efic_pct": cvr_eff["capped_blk_afe_pct"],
+                "raw_afe_pct": cvr_eff["raw_blk_afe_pct"],
+                "afe_cap_applied": cvr_eff["blk_cap_applied"],
+                "legacy_touch_reduction_pct": p2c["blk_lift_efic"],
             },
         },
         "ctv_block_consolidated": {

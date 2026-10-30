@@ -48,12 +48,27 @@ def norm_slug(text) -> str:
 
 def classify_tag(aname: str) -> tuple[bool, str]:
     low, nlow = str(aname or "").lower(), norm_slug(aname)
+    if "google analytics" in low:
+        return False, str(aname or "")
     if "in_app_purchase" in low and "ios" in low:
         return True, f"iOS ({aname})"
     if "in_app_purchase" in low and "android" in low:
         return True, f"Android ({aname})"
-    if any(k in nlow for k in ("comprafeita", "purchase", "ordercomplete", "venda")) and "pixelunico" not in nlow:
+    if any(k in nlow for k in ("comprafeita", "purchase", "ordercomplete", "venda")) and not any(x in nlow for x in ("pixelunico", "testebain")):
         return True, f"Web ({aname})"
+    return False, str(aname or "")
+
+
+def classify_product_tag(aname: str) -> tuple[bool, str]:
+    low, nlow = str(aname or "").lower(), norm_slug(aname)
+    if any(x in nlow for x in ("googleanalytics", "viewitemlist", "carrinho", "maiorvalor", "pixelunico", "comprafeita")):
+        return False, str(aname or "")
+    if "view_item" in low and "ios" in low:
+        return True, f"iOS Produto ({aname})"
+    if "view_item" in low and "android" in low:
+        return True, f"Android Produto ({aname})"
+    if any(k in nlow for k in ("04oboticariooboticarioproduto", "oboticarioproduto", "productview", "viewcontent", "visualizacaoproduto")) or nlow.endswith("produto"):
+        return True, f"Web Produto ({aname})"
     return False, str(aname or "")
 
 

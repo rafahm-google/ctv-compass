@@ -15,6 +15,7 @@ from common import (
     DEFAULT_CTV_PLATFORMS,
     DEFAULT_NON_CTV_PLATFORMS,
     DV360_SCOPES,
+    classify_product_tag,
     classify_tag,
     load_credentials,
     norm_slug,
@@ -48,18 +49,18 @@ def discover_and_build_config(args):
     adv_name = adv.get("name", "")
     fl_config_id = str(adv.get("floodlightConfigurationId", adv_id))
 
+    acts = cm.floodlightActivities().list(profileId=prof_id, floodlightConfigurationId=fl_config_id).execute().get("floodlightActivities", [])
+    excl = [norm_slug(k) for k in (args.exclude_tag_keywords or "").split(",") if k.strip()]
+
     purchase_ids, purchase_labels = [], {}
     if args.purchase_activity_ids:
         wanted = {x.strip() for x in args.purchase_activity_ids.split(",") if x.strip()}
-        acts = cm.floodlightActivities().list(profileId=prof_id, floodlightConfigurationId=fl_config_id).execute().get("floodlightActivities", [])
         for a in acts:
             if str(a.get("id")) in wanted:
                 aid = str(a["id"])
                 purchase_ids.append(aid)
                 purchase_labels[aid] = a.get("name", aid)
     else:
-        excl = [norm_slug(k) for k in (args.exclude_tag_keywords or "").split(",") if k.strip()]
-        acts = cm.floodlightActivities().list(profileId=prof_id, floodlightConfigurationId=fl_config_id).execute().get("floodlightActivities", [])
         for a in acts:
             aid, aname = str(a.get("id")), a.get("name", "")
             if any(x in norm_slug(aname) for x in excl):
@@ -68,6 +69,24 @@ def discover_and_build_config(args):
             if rec:
                 purchase_ids.append(aid)
                 purchase_labels[aid] = lbl
+
+    product_ids, product_labels = [], {}
+    if args.product_activity_ids:
+        wanted_p = {x.strip() for x in args.product_activity_ids.split(",") if x.strip()}
+        for a in acts:
+            if str(a.get("id")) in wanted_p:
+                aid = str(a["id"])
+                product_ids.append(aid)
+                product_labels[aid] = a.get("name", aid)
+    else:
+        for a in acts:
+            aid, aname = str(a.get("id")), a.get("name", "")
+            if any(x in norm_slug(aname) for x in excl):
+                continue
+            rec_p, lbl_p = classify_product_tag(aname)
+            if rec_p:
+                product_ids.append(aid)
+                product_labels[aid] = lbl_p
 
     dv_block = {"enabled": False, "advertiser_id": "", "campaign_id": "", "token_dv360_path": args.token_dv360}
     if args.dv360_advertiser_id:
@@ -105,6 +124,8 @@ def discover_and_build_config(args):
             "token_reporting_path": args.token_cm360,
             "purchase_activity_ids": purchase_ids,
             "purchase_activity_labels": purchase_labels,
+            "product_activity_ids": product_ids,
+            "product_activity_labels": product_labels,
         },
         "dv360": dv_block,
         "date_window": {"start_date": start_date, "end_date": end_date},
@@ -134,6 +155,7 @@ if __name__ == "__main__":
     p.add_argument("--agency-name", default="Agência", help="Nome da agência")
     p.add_argument("--brand-keyword", default=None, help="Palavra-chave da marca (sem underscores)")
     p.add_argument("--purchase-activity-ids", default=None, help="IDs Floodlight de compra separados por vírgula (1 por plataforma)")
+    p.add_argument("--product-activity-ids", default=None, help="IDs Floodlight de visualização de produto separados por vírgula (1 por plataforma)")
     p.add_argument("--exclude-tag-keywords", default="", help="Palavras-chave de outras marcas do grupo para excluir na autodescoberta")
     p.add_argument("--start-date", default=None, help="YYYY-MM-DD")
     p.add_argument("--end-date", default=None, help="YYYY-MM-DD")
