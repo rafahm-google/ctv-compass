@@ -598,7 +598,7 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
         <div class="grid-3">
           <div class="card top-blue"><div><span class="badge blue">Passo 1 • Vendas Solo (P2C)</span><p class="card-text">Contabilizamos integralmente apenas os pedidos observados no <code>Path to Conversion</code> em que a CTV foi o único canal da jornada, sem extrapolar o alcance exclusivo.</p></div><div class="math-foot">Cálculo: Observado P2C: {fmt_int(blk['p2c_solo_conversions'])} vendas Solo ({fmt_curr(blk['p2c_solo_revenue'])})</div></div>
           <div class="card top-green"><div><span class="badge green">Passo 2 • Influência 1+ (AF_e Funil)</span><p class="card-text">{step2_card_text}</p></div><div class="math-foot">{step2_card_math}</div></div>
-          <div class="card top-yellow"><div><span class="badge yellow">Passo 3 • Valor em R$ (Δ AOV)</span><p class="card-text">Expansão de Ticket Médio entra exclusivamente em Reais por pedido influenciado na interseção (<code>+{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))}/ped.</code>), gerando <code>+{fmt_curr(blk['aov_premium_revenue'])}</code> em prêmio de cesta.</p></div><div class="math-foot">Cálculo: {fmt_curr(combo_blk['aov'])} - {fmt_curr(ctrl_camp['aov'])} = +{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))}/ped.</div></div>
+          <div class="card top-yellow"><div><span class="badge yellow">Passo 3 • Valor em R$ (Δ AOV)</span><p class="card-text">Expansão de Ticket Médio entra exclusivamente em Reais por pedido influenciado na interseção (<code>+{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))}/ped.</code>), adicionando <code>+{fmt_curr(blk['aov_premium_revenue'])}</code> no valor do carrinho.</p></div><div class="math-foot">Cálculo: {fmt_curr(combo_blk['aov'])} - {fmt_curr(ctrl_camp['aov'])} = +{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))}/ped.</div></div>
         </div>
       </section>
 
@@ -668,7 +668,7 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
         <div class="slide-meta"><span class="slide-kicker">PASSO 08 • GOVERNANÇA TÉCNICA E PRÓXIMOS PASSOS</span><span class="slide-scope">Recomendações Executivas para {meta['agency_name']} &amp; {meta['brand_name']}</span></div>
         <h2 class="slide-title">Confiabilidade Metodológica e Plano de Ação</h2>
         <div class="grid-3">
-          <div class="card top-green"><div><span class="badge green">1. Ponte Cross-Device &amp; Aceleração</span><ul class="clean-list"><li>Ambientes logados conectam Smart TV e smartphone no <code>Reach Overlap</code> sem depender de clique na TV.</li><li>Compras influenciadas na interseção (via <code>CVR Produto → Compra</code>) e prêmio de AOV são reportados em suas unidades exatas, enquanto a queda de toques Não-CTV no P2C (<code>{fmt_dec(blk_t)}</code> vs. <code>{fmt_dec(base_t)}</code>; <code>{fmt_pct(blk_t_pct, sign=True)}</code>) entra como evidência comportamental de aceleração de jornada.</li></ul></div></div>
+          <div class="card top-green"><div><span class="badge green">1. Conexão Cross-Device &amp; Aceleração</span><ul class="clean-list"><li>Ambientes logados conectam Smart TV e smartphone no <code>Reach Overlap</code> sem depender de clique na TV.</li><li>Compras influenciadas na interseção (via <code>CVR Produto → Compra</code>) e prêmio de AOV são reportados em suas unidades exatas, enquanto a queda de toques Não-CTV no P2C (<code>{fmt_dec(blk_t)}</code> vs. <code>{fmt_dec(base_t)}</code>; <code>{fmt_pct(blk_t_pct, sign=True)}</code>) entra como evidência comportamental de aceleração de jornada.</li></ul></div></div>
           <div class="card top-yellow"><div><span class="badge yellow">2. Cautelas em Inventários Externos</span><ul class="clean-list"><li>Parceiros externos sem login unificado concentram maior parcela de alcance isolado ({fmt_pct(c_sec['exclusive_pct_site'] if c_sec else 0)} em <code>{c_sec['site'] if c_sec else 'Outros'}</code>).</li><li>Evitar misturar Mobile e Smart TV no mesmo Placement para preservar rastreio determinístico no P2C.</li></ul></div></div>
           <div class="card top-blue"><div><span class="badge blue">3. Próximos Passos</span><ul class="clean-list"><li>Conectar audiências de CTV ao retargeting de performance para elevar a conectividade Cross-Device.</li><li>Complementar com estudos incrementais (Conversion Lift / Geo-Lift) em voos de alta escala.</li></ul></div></div>
         </div>
@@ -716,7 +716,7 @@ def _generate_device_infographics(res: dict, out_dir: Path) -> tuple[str, str, s
     ax.text(2.52, 2.25, f"Smart TV (30004): {fmt_curr(blk['smart_tv_cost'])}\nSet-top Box (30006): {fmt_curr(blk['stb_cost'])}", fontsize=8.2, fontweight="bold", color="#1A73E8", ha="center", va="center", bbox=dict(boxstyle="round,pad=0.30", facecolor="#FFF", edgecolor="#D2E3FC"))
 
     ax.annotate("", xy=(5.55, 3.42), xytext=(4.80, 3.42), arrowprops=dict(arrowstyle="->,head_width=0.35,head_length=0.35", color="#1A73E8", lw=3))
-    ax.text(5.17, 3.92, "Ponte Pura\nTV → Mobile", fontsize=8.2, fontweight="bold", color="#1A73E8", ha="center")
+    ax.text(5.17, 3.92, "Conexão\nTV → Mobile", fontsize=8.2, fontweight="bold", color="#1A73E8", ha="center")
 
     ax.add_patch(FancyBboxPatch((5.65, 1.80), 4.0, 3.25, boxstyle="round,pad=0.12,rounding_size=0.2", ec="#F9AB00", fc="#FEF7E0", lw=2))
     ax.text(7.65, 4.65, "2. AÇÃO EM TELAS PESSOAIS", fontsize=10.2, fontweight="bold", color="#B06000", ha="center")
@@ -1001,7 +1001,7 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
         <div class="grid-3">
           <div class="card top-green"><div><span class="badge green">1. Vantagens do Modo Device</span><ul class="clean-list"><li>Descobre entrega real de Smart TV em campanhas multi-tela (ex.: Video Reach / Demand Gen).</li><li>Expurga sobreposição <code>TV ∩ TV</code> via Inclusão-Exclusão Exata, medindo conectividade Cross-Device pura.</li></ul></div></div>
           <div class="card top-yellow"><div><span class="badge yellow">2. Cuidados com Pixels 1x1 Externos</span><ul class="clean-list"><li>Parceiros CTV medidos apenas por pixel 1x1 sem User-Agent estruturado podem cair em <code>Unknown platform</code> no CM360.</li><li>Placements mistos (Mobile + TV juntos) diluem a pureza determinística por toque no CSV do P2C.</li></ul></div></div>
-          <div class="card top-blue"><div><span class="badge blue">3. Boas Práticas para Agências</span><ul class="clean-list"><li>Trafegar Placements exclusivos para Smart TV mesmo dentro de Line Items multi-tela.</li><li>Vincular audiências de CTV ao retargeting mobile para elevar a ponte <code>TV → Smartphone</code>.</li></ul></div></div>
+          <div class="card top-blue"><div><span class="badge blue">3. Boas Práticas para Agências</span><ul class="clean-list"><li>Trafegar Placements exclusivos para Smart TV mesmo dentro de Line Items multi-tela.</li><li>Vincular audiências de CTV ao remarketing mobile para ampliar a conexão <code>TV → Smartphone</code>.</li></ul></div></div>
         </div>
       </section>
     """
