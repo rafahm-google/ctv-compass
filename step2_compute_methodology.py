@@ -1099,7 +1099,8 @@ def compute_methodology(config_path: str, mode_override: str | None = None) -> s
         m_dev = out_dir / "extraction_manifest_device.json"
         if not m_dev.exists():
             raise FileNotFoundError(f"Manifesto Device não encontrado em {out_dir}. Rode step1_extract_reports.py --mode both primeiro.")
-        m_site = next((p for p in [out_dir / "extraction_manifest.json", m_dev] if p.exists()), m_dev)
+        m_site_cand = out_dir / "extraction_manifest.json"
+        m_site = m_site_cand if (m_site_cand.exists() and m_site_cand.stat().st_mtime > m_dev.stat().st_mtime) else m_dev
         site_json = _compute_site_mode(cfg, json.loads(m_site.read_text(encoding="utf-8")), out_dir)
         site_res = json.loads(Path(site_json).read_text(encoding="utf-8"))
         if site_res["meta"].get("naming_detected") and not cfg.get("baseline_site_results_path"):
