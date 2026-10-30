@@ -5,7 +5,7 @@ Serviço HTTP e pipeline CLI em Python para mensuração de campanhas de Connect
 O pipeline extrai e reconcilia três relatórios do CM360 na mesma janela de datas e `Campaign ID`:
 1. `STANDARD`: custo (`DV360 Cost` / `Media Cost`), `Platform Type`, `Attributed Event Platform Type` (`eventPlatformType`), conversões de último toque (`Click-Through` e `View-Through`) e visualizações de produto oficiais para apurar o funil `CVR Produto -> Compra` (`AF_e`, limitado ao teto simétrico de `50%`).
 2. `REACH`: `Unique Reach` deduplicado, `Co-Viewed Reach` e sobreposição cross-channel / cross-device (`Duplicate Impression Reach`).
-3. `PATH_TO_CONVERSION`: jornadas deduplicadas por `Conversion ID`, vendas solo e expansão de ticket médio (`AOV`).
+3. `PATH_TO_CONVERSION`: jornadas deduplicadas por `Conversion ID`, vendas solo, expansão de ticket médio (`AOV`) e diagnóstico comportamental de aceleração de toques Não-CTV até a compra (reportado como indicador complementar de jornada, sem entrar como proxy de volume atribuído).
 
 Por padrão (`identification_mode="both"`), a saída é um arquivo HTML único autocontido (imagens renderizadas em `matplotlib` embutidas em Base64) com duas visões comutáveis:
 - `site`: classifica CTV pelo nome do `Site (CM360)`.

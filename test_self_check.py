@@ -101,7 +101,9 @@ Camp_Test,DV360-DemandGen,600,66.67,300,33.33
         assert abs(b_site["total_attributed_revenue"] - 530.0) < 1e-6, f"Unexpected site rev: {b_site['total_attributed_revenue']}"
         html_site = Path(generate_html_report(str(cfg_path), mode_override="site"))
         assert html_site.exists() and html_site.stat().st_size > 10_000
-        assert "economia de toques" not in html_site.read_text(encoding="utf-8").lower()
+        site_txt = html_site.read_text(encoding="utf-8")
+        assert "Diagnóstico Comportamental no P2C" in site_txt and "Média Toques Não-CTV" in site_txt
+        assert "× economia de toques" not in site_txt.lower()
 
         # 2. Device-mode synthetic fixtures (Inclusion-Exclusion: |CTV|=500 + |NonCTV|=800 - |U|=1000 => Exact Overlap = 300; click-tracker P3 = 0 imp / 100 clicks)
         m_dev = {
@@ -187,7 +189,9 @@ DV360-DemandGen,800,800,3.5
         assert abs(b_dev["duplicate_reach_1plus_sum"] - 300.0) < 1e-6
         html_dev = Path(generate_html_report(str(cfg_path), mode_override="device"))
         assert html_dev.exists() and html_dev.stat().st_size > 10_000
-        assert "economia de toques" not in html_dev.read_text(encoding="utf-8").lower()
+        dev_txt = html_dev.read_text(encoding="utf-8")
+        assert "Diagnóstico Comportamental no P2C" in dev_txt and "Média Toques Não-CTV" in dev_txt
+        assert "× economia de toques" not in dev_txt.lower()
 
         # 3. Unified 'both' mode WITH 'CTV' site naming
         (root / "extraction_manifest.json").unlink(missing_ok=True)
@@ -196,7 +200,8 @@ DV360-DemandGen,800,800,3.5
         both_txt = html_both.read_text(encoding="utf-8")
         assert "let activeDeck = 0," in both_txt and "switchDeck(1)" in both_txt
         assert "TOTAL BLOCO CTV RECONCILIADO" in both_txt
-        assert "economia de toques" not in both_txt.lower()
+        assert "Diagnóstico Comportamental no P2C" in both_txt and "Média Toques Não-CTV" in both_txt
+        assert "× economia de toques" not in both_txt.lower()
 
         # 4. Unified 'both' mode WITHOUT 'CTV' site naming + fallback without product tags
         for p in raw.glob("*.csv"):

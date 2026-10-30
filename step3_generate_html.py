@@ -366,49 +366,70 @@ def _generate_site_infographics(res: dict, out_dir: Path) -> tuple[str, str, str
     plt.tight_layout(pad=0.3); plt.savefig(img2, dpi=220); plt.close(fig)
 
     img3 = out_dir / "ilustracao_3_lifts_marginais.png"
-    fig = plt.figure(figsize=(15, 6.2), dpi=220); fig.patch.set_facecolor("#FFFFFF")
-    fig.text(0.03, 0.94, f"ILUSTRAÇÃO 3 • PROVA EMPÍRICA: EFICIÊNCIA DE FUNIL (CVR PRODUTO → COMPRA) & TICKET MÉDIO (AOV) — {meta['brand_name'].upper()}", fontsize=12.1, fontweight="bold", color="#1A73E8")
-    fig.text(0.03, 0.885, "O ganho na taxa de conversão pós-visualização de produto (AF_e, teto simétrico de 50%) pondera as compras assistidas; o Δ AOV define o prêmio em R$/pedido:", fontsize=9.6, color="#5F6368")
-    ax1, ax2 = fig.add_axes([0.06, 0.14, 0.41, 0.63]), fig.add_axes([0.55, 0.14, 0.41, 0.63])
+    fig = plt.figure(figsize=(15.6, 6.3), dpi=220); fig.patch.set_facecolor("#FFFFFF")
+    fig.text(0.028, 0.94, f"ILUSTRAÇÃO 3 • EVIDÊNCIAS EMPÍRICAS: FUNIL (CVR), TICKET MÉDIO (AOV) & ACELERAÇÃO DE TOQUES — {meta['brand_name'].upper()}", fontsize=11.9, fontweight="bold", color="#1A73E8")
+    fig.text(0.028, 0.885, "Atribuição usa CVR Produto→Compra (AF_e, teto 50%) p/ volume e Δ AOV p/ prêmio em R$; a redução de toques no P2C é exibida como diagnóstico comportamental:", fontsize=9.3, color="#5F6368")
+    ax1 = fig.add_axes([0.048, 0.14, 0.272, 0.62])
+    ax2 = fig.add_axes([0.380, 0.14, 0.272, 0.62])
+    ax3 = fig.add_axes([0.712, 0.14, 0.268, 0.62])
     top_chans = [c for c in ctv_chans if c.get("prod_views", 0) >= 30 and c.get("purc_std_for_cvr", 0) >= 5][:2] or ctv_chans[:2]
+    short_names = [c["site"].replace("DV360_", "").replace("DV360-", "") for c in top_chans]
     if is_cvr_mode:
-        cats1 = [f"{c['site']}\n(Funil Std)" for c in top_chans] + ["Bloco CTV Consolidado\n(Funil Std)"]
+        cats1 = [f"{sn}\n(Funil Std)" for sn in short_names] + ["Bloco CTV\n(Funil Std)"]
         ctrl_v = [f_non["cvr_pct"]] * (len(top_chans) + 1)
         ctv_v = [c["cvr_prod_to_purc_pct"] for c in top_chans] + [f_blk["cvr_pct"]]
-        lifts1 = [f"AF_e: {fmt_pct(c['lift_lente2_efic_pct'])}{' (teto 50%)' if c.get('afe_cap_applied') else ''}" for c in top_chans] + [f"AF_e: {fmt_pct(f_blk['capped_afe_pct'])}{' (teto 50%)' if f_blk['cap_applied'] else ''}"]
-        ttl1, ylbl1 = "1. Conversão Pós-Produto: CVR (Define Volume Assistido)", "CVR Produto → Compra (%)"
+        lifts1 = [f"AF_e: {fmt_pct(c['lift_lente2_efic_pct'])}{' *' if c.get('afe_cap_applied') else ''}" for c in top_chans] + [f"AF_e: {fmt_pct(f_blk['capped_afe_pct'])}{' *' if f_blk['cap_applied'] else ''}"]
+        ttl1, ylbl1 = "1. CVR Produto→Compra (Volume Assistido)", "CVR Produto → Compra (%)"
     else:
-        cats1 = [f"{c['site']}\n(Fallback AOV)" for c in top_chans] + ["Bloco CTV Consolidado\n(Fallback AOV)"]
+        cats1 = [f"{sn}\n(Fallback)" for sn in short_names] + ["Bloco CTV\n(Fallback)"]
         ctrl_v = [0.0] * (len(top_chans) + 1)
         ctv_v = [c["lift_lente2_efic_pct"] for c in top_chans] + [f_blk["capped_afe_pct"]]
         lifts1 = [f"AF_e: {fmt_pct(v)}" for v in ctv_v]
-        ttl1, ylbl1 = "1. Fração Atribuível AF_e (Fallback s/ Tag de Produto)", "Fração Atribuível AF_e (%)"
-    x, w = list(range(len(cats1))), 0.32
-    b1 = ax1.bar([i - w / 2 for i in x], ctrl_v, width=w, color="#9AA0A6", label="Base Sem CTV (Não-CTV)")
+        ttl1, ylbl1 = "1. Fração AF_e (Fallback s/ Tag Produto)", "Fração Atribuível AF_e (%)"
+    x, w = list(range(len(cats1))), 0.33
+    b1 = ax1.bar([i - w / 2 for i in x], ctrl_v, width=w, color="#9AA0A6", label="Base Sem CTV")
     b2 = ax1.bar([i + w / 2 for i in x], ctv_v, width=w, color="#34A853", label="Expostos CTV")
-    ax1.set_title(ttl1, fontsize=10.3, fontweight="bold", pad=12)
-    ax1.set_xticks(x); ax1.set_xticklabels(cats1, fontsize=8.8, fontweight="bold"); ax1.set_ylabel(ylbl1, fontsize=9)
-    max_v = max(ctrl_v + ctv_v + [0.5]); ax1.set_ylim(0, max_v * 1.42); ax1.grid(axis="y", linestyle="--", alpha=0.4); ax1.legend(loc="upper right", fontsize=8.5)
+    ax1.set_title(ttl1, fontsize=9.6, fontweight="bold", pad=11)
+    ax1.set_xticks(x); ax1.set_xticklabels(cats1, fontsize=8.1, fontweight="bold"); ax1.set_ylabel(ylbl1, fontsize=8.5)
+    max_v = max(ctrl_v + ctv_v + [0.5]); ax1.set_ylim(0, max_v * 1.45); ax1.grid(axis="y", linestyle="--", alpha=0.4); ax1.legend(loc="upper right", fontsize=7.8)
     for bar in b1:
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max_v * 0.025, fmt_pct(bar.get_height()), ha="center", fontsize=8.6, fontweight="bold", color="#5F6368")
+        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max_v * 0.025, fmt_pct(bar.get_height()), ha="center", fontsize=7.9, fontweight="bold", color="#5F6368")
     for idx, bar in enumerate(b2):
-        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max_v * 0.025, fmt_pct(bar.get_height()), ha="center", fontsize=8.6, fontweight="bold", color="#188038")
-        ax1.text(x[idx], max(ctrl_v[idx], bar.get_height()) + max_v * 0.14, lifts1[idx], ha="center", fontsize=8.3, fontweight="bold", color="#188038", bbox=dict(boxstyle="round,pad=0.25", facecolor="#E6F4EA", edgecolor="#34A853"))
+        ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max_v * 0.025, fmt_pct(bar.get_height()), ha="center", fontsize=7.9, fontweight="bold", color="#188038")
+        ax1.text(x[idx], max(ctrl_v[idx], bar.get_height()) + max_v * 0.15, lifts1[idx], ha="center", fontsize=7.6, fontweight="bold", color="#188038", bbox=dict(boxstyle="round,pad=0.22", facecolor="#E6F4EA", edgecolor="#34A853"))
 
-    cats2 = [f"{c['site']}\n(Campanha)" for c in top_chans] + ["Bloco CTV Consolidado\n(Campanha)"]
+    cats2 = [f"{sn}\n(Campanha)" for sn in short_names] + ["Bloco CTV\n(Campanha)"]
     ctrl_aov = [c["base_ctrl_aov"] for c in top_chans] + [ctrl_camp["aov"]]
     ctv_aov = [c["aov_valuation"] for c in top_chans] + [combo_blk["aov"]]
-    lifts2 = [f"+{fmt_curr(c['aov_delta_brl'])}/ped. (+{fmt_pct(c['lift_lente1_specific_pct'])})" for c in top_chans] + [f"+{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))}/ped. (+{fmt_pct(combo_blk['lift_valor_pct'])})"]
-    b3 = ax2.bar([i - w / 2 for i in x], ctrl_aov, width=w, color="#9AA0A6", label="Coorte 2: Controle Sem CTV")
-    b4 = ax2.bar([i + w / 2 for i in x], ctv_aov, width=w, color="#4285F4", label="Coorte 3: Interseção Com CTV")
-    ax2.set_title("2. Expansão de Ticket Médio / AOV (Define Prêmio em R$)", fontsize=10.3, fontweight="bold", pad=12)
-    ax2.set_xticks(x); ax2.set_xticklabels(cats2, fontsize=8.8, fontweight="bold"); ax2.set_ylabel("Ticket Médio (R$)", fontsize=9)
-    max_a = max(ctrl_aov + ctv_aov + [150.0]); ax2.set_ylim(0, max_a * 1.42); ax2.grid(axis="y", linestyle="--", alpha=0.4); ax2.legend(loc="upper right", fontsize=8.5)
+    lifts2 = [f"+{fmt_curr(c['aov_delta_brl'])}" for c in top_chans] + [f"+{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))}"]
+    b3 = ax2.bar([i - w / 2 for i in x], ctrl_aov, width=w, color="#9AA0A6", label="Controle Sem CTV")
+    b4 = ax2.bar([i + w / 2 for i in x], ctv_aov, width=w, color="#4285F4", label="Com CTV")
+    ax2.set_title("2. Ticket Médio / AOV (Prêmio em R$)", fontsize=9.6, fontweight="bold", pad=11)
+    ax2.set_xticks(x); ax2.set_xticklabels(cats2, fontsize=8.1, fontweight="bold"); ax2.set_ylabel("Ticket Médio (R$)", fontsize=8.5)
+    max_a = max(ctrl_aov + ctv_aov + [150.0]); ax2.set_ylim(0, max_a * 1.45); ax2.grid(axis="y", linestyle="--", alpha=0.4); ax2.legend(loc="upper right", fontsize=7.8)
     for bar in b3:
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2.5, f"R$ {bar.get_height():.0f}", ha="center", fontsize=8.8, fontweight="bold", color="#5F6368")
+        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2.5, f"R$ {bar.get_height():.0f}", ha="center", fontsize=8.0, fontweight="bold", color="#5F6368")
     for idx, bar in enumerate(b4):
-        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2.5, f"R$ {bar.get_height():.0f}", ha="center", fontsize=8.8, fontweight="bold", color="#1A73E8")
-        ax2.text(x[idx], max(ctrl_aov[idx], bar.get_height()) + max_a * 0.14, lifts2[idx], ha="center", fontsize=8.1, fontweight="bold", color="#1A73E8", bbox=dict(boxstyle="round,pad=0.25", facecolor="#E8F0FE", edgecolor="#4285F4"))
+        ax2.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 2.5, f"R$ {bar.get_height():.0f}", ha="center", fontsize=8.0, fontweight="bold", color="#1A73E8")
+        ax2.text(x[idx], max(ctrl_aov[idx], bar.get_height()) + max_a * 0.15, lifts2[idx], ha="center", fontsize=7.6, fontweight="bold", color="#1A73E8", bbox=dict(boxstyle="round,pad=0.22", facecolor="#E8F0FE", edgecolor="#4285F4"))
+
+    t_chans = [c for c in ctv_chans if c.get("p2c_combo_all_conversions", 0) > 0][:2]
+    cats3 = [f"{c['site'].replace('DV360_', '').replace('DV360-', '')}\n(P2C 14d)" for c in t_chans] + ["Bloco CTV\n(P2C 14d)"]
+    x3 = list(range(len(cats3)))
+    base_t = ctrl_all["avg_non_ctv_touches"]
+    ctrl_t = [base_t] * len(cats3)
+    ctv_t = [c["p2c_combo_all_nonctv_touches"] for c in t_chans] + [combo_blk["avg_non_ctv_touches"]]
+    lifts3 = [f"{fmt_pct(((t - base_t) / base_t * 100.0) if base_t > 0 else 0.0, 1)}" if t <= base_t else f"+{fmt_pct(((t - base_t) / base_t * 100.0), 1)}" for t in ctv_t]
+    b5 = ax3.bar([i - w / 2 for i in x3], ctrl_t, width=w, color="#9AA0A6", label="Controle Sem CTV")
+    b6 = ax3.bar([i + w / 2 for i in x3], ctv_t, width=w, color="#F9AB00", label="Jornadas Com CTV")
+    ax3.set_title("3. Toques Não-CTV (Diagnóstico P2C)", fontsize=9.6, fontweight="bold", pad=11)
+    ax3.set_xticks(x3); ax3.set_xticklabels(cats3, fontsize=8.1, fontweight="bold"); ax3.set_ylabel("Média Toques Não-CTV", fontsize=8.5)
+    max_t = max(ctrl_t + ctv_t + [2.0]); ax3.set_ylim(0, max_t * 1.45); ax3.grid(axis="y", linestyle="--", alpha=0.4); ax3.legend(loc="upper right", fontsize=7.8)
+    for bar in b5:
+        ax3.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max_t * 0.025, fmt_dec(bar.get_height()), ha="center", fontsize=8.0, fontweight="bold", color="#5F6368")
+    for idx, bar in enumerate(b6):
+        ax3.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + max_t * 0.025, fmt_dec(bar.get_height()), ha="center", fontsize=8.0, fontweight="bold", color="#B06000")
+        ax3.text(x3[idx], max(ctrl_t[idx], bar.get_height()) + max_t * 0.15, f"{lifts3[idx]} toques", ha="center", fontsize=7.6, fontweight="bold", color="#B06000", bbox=dict(boxstyle="round,pad=0.22", facecolor="#FEF7E0", edgecolor="#F9AB00"))
     plt.savefig(img3, dpi=220); plt.close(fig)
     return img_to_b64(img1), img_to_b64(img2), img_to_b64(img3)
 
@@ -465,6 +486,35 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
       <td class="num">{fmt_pct(f_blk['capped_afe_pct'])}{f" (teto 50% | bruto {fmt_pct(f_blk['raw_afe_pct'])})" if f_blk['cap_applied'] else ''}</td>
       <td class="num">{fmt_curr(combo_blk['aov'])}</td>
       <td class="num">+{fmt_curr(max(0.0, combo_blk['aov'] - ctrl_camp['aov']))} / ped. (+{fmt_pct(combo_blk['lift_valor_pct'])})</td>
+    </tr>"""
+
+    base_t = ctrl_all["avg_non_ctv_touches"]
+    blk_t = combo_blk["avg_non_ctv_touches"]
+    blk_t_pct = ((blk_t - base_t) / base_t * 100.0) if base_t > 0 else 0.0
+    touch_rows = f"""<tr class="row-subtotal">
+      <td><strong>Grupo de Controle: Jornadas Multi-Canal Sem CTV</strong><div class="cell-sub">Pedidos no P2C sem nenhum toque de CTV ({fmt_int(ctrl_camp['conversions'])} restrito à camp.)</div></td>
+      <td class="num">—</td>
+      <td class="num">{fmt_int(ctrl_all['conversions'])}</td>
+      <td class="num"><strong>{fmt_dec(base_t)} toques</strong><div class="cell-sub">Camp: {fmt_dec(ctrl_camp['avg_non_ctv_touches'])} toques</div></td>
+      <td class="num">Base (0,00)</td>
+      <td class="num">Base (0,00%)</td>
+    </tr>""" + "".join(
+        f"""<tr>
+          <td><strong>Jornadas Com <code>{c['site']}</code></strong><div class="cell-sub">{'Com compras multi-canal observadas no P2C' if c['p2c_combo_all_conversions'] > 0 else 'Apenas venda Solo observada no P2C'}</div></td>
+          <td class="num">{fmt_int(c['p2c_solo_conversions'])}</td>
+          <td class="num">{fmt_int(c['p2c_combo_all_conversions'])}</td>
+          <td class="num">{f"<strong>{fmt_dec(c['p2c_combo_all_nonctv_touches'])} toques</strong><div class='cell-sub'>Camp: {fmt_dec(c['p2c_combo_camp_nonctv_touches'])} toques</div>" if c['p2c_combo_all_conversions'] > 0 else '—'}</td>
+          <td class="num">{f"{fmt_dec(c['p2c_combo_all_nonctv_touches'] - base_t, sign=True)} toques" if c['p2c_combo_all_conversions'] > 0 else '—'}</td>
+          <td class="num{' cell-highlight-green' if (c['p2c_combo_all_conversions'] > 0 and c['p2c_combo_all_nonctv_touches'] < base_t) else ''}">{f"{fmt_pct((c['p2c_combo_all_nonctv_touches'] - base_t) / base_t * 100.0, sign=True)}" if (c['p2c_combo_all_conversions'] > 0 and base_t > 0) else '—'}</td>
+        </tr>"""
+        for c in ctv_chans if (c["p2c_combo_all_conversions"] > 0 or c["p2c_solo_conversions"] > 0)
+    ) + f"""<tr class="row-total">
+      <td><strong>BLOCO CTV CONSOLIDADO (Jornadas Multi-Canal Com CTV)</strong></td>
+      <td class="num">{fmt_int(blk['p2c_solo_conversions'])}</td>
+      <td class="num">{fmt_int(combo_blk['conversions'])}</td>
+      <td class="num">{fmt_dec(blk_t)} toques</td>
+      <td class="num">{fmt_dec(blk_t - base_t, sign=True)} toques</td>
+      <td class="num">{fmt_pct(blk_t_pct, sign=True) if combo_blk['conversions'] > 0 else '—'}</td>
     </tr>"""
 
     res_rows = ""
@@ -558,7 +608,7 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
         <div class="vis-tabs no-print">
           <button onclick="showVisTab(0)" class="vis-tab active">1. Jornada Cross-Device</button>
           <button onclick="showVisTab(1)" class="vis-tab">2. Diagrama de Venn (1+)</button>
-          <button onclick="showVisTab(2)" class="vis-tab">3. Funil (CVR) &amp; Ticket Médio</button>
+          <button onclick="showVisTab(2)" class="vis-tab">3. Funil (CVR), AOV &amp; Toques</button>
           <button onclick="showVisTab(3)" class="vis-tab">Exibir Todos os 3</button>
         </div>
         <div class="vis-panel"><img src="{b64_1}" alt="Ilustração 1" class="vis-img"></div>
@@ -578,12 +628,17 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
       </section>
 
       <section class="slide-card slide-hidden">
-        <div class="slide-meta"><span class="slide-kicker">PASSO 05 • ETAPA 2 DO CÁLCULO (FUNIL CVR &amp; AOV NO P2C 14D)</span><span class="slide-scope">Comparativo Simétrico Expostos CTV vs. Base Sem CTV</span></div>
-        <h2 class="slide-title">Conversão Pós-Visualização de Produto (AF_e) e Ganho de Ticket Médio (R$)</h2>
+        <div class="slide-meta"><span class="slide-kicker">PASSO 05 • ETAPA 2 DO CÁLCULO (CVR &amp; AOV) + DIAGNÓSTICO DE TOQUES NO P2C</span><span class="slide-scope">Comparativo Simétrico Expostos CTV vs. Base Sem CTV</span></div>
+        <h2 class="slide-title">Funil Produto → Compra (AF_e), Ticket Médio (R$) e Aceleração de Toques na Jornada</h2>
         <div class="table-box">
-          <div class="table-head-bar"><span class="table-head-title">Funil Produto → Compra (Standard) &amp; Ticket Médio P2C (14d)</span><span>Teto Simétrico AF_e: 50,00% | Base P2C: {fmt_int(tot['p2c_total_conversions'])} Compras ({fmt_curr(tot['p2c_total_revenue'])})</span></div>
+          <div class="table-head-bar"><span class="table-head-title">1. Parâmetros da Atribuição: Funil Produto → Compra (Standard) &amp; Ticket Médio P2C (14d)</span><span>Teto Simétrico AF_e: 50,00% | Base P2C: {fmt_int(tot['p2c_total_conversions'])} Compras ({fmt_curr(tot['p2c_total_revenue'])})</span></div>
           <div class="table-scroll"><table><thead><tr><th>Coorte / Canal</th><th class="num">Views de Produto</th><th class="num">Compras (Funil Std)</th><th class="num">CVR Produto → Compra</th><th class="num cell-highlight-green">Fração AF_e (Teto 50%)</th><th class="num">Ticket Médio P2C (AOV)</th><th class="num cell-highlight-blue">Prêmio AOV (R$)</th></tr></thead><tbody>{lifts_rows}</tbody></table></div>
-          <div class="table-foot-math">Como calculamos: CVR Produto → Compra = Compras Oficiais ÷ Views de Produto Oficiais (cancelando algebricamente a perda cross-device) | AF_e = min(50%, max(0%, (CVR_CTV - CVR_Base) ÷ CVR_CTV)) | Canais com amostra &lt; 30 views ou &lt; 5 compras herdam o AF_e consolidado do bloco | Prêmio AOV = max(0, AOV Com CTV - AOV Controle).</div>
+          <div class="table-foot-math">Como calculamos (entra na fórmula de atribuição): CVR Produto → Compra = Compras Oficiais ÷ Views de Produto Oficiais | AF_e = min(50%, max(0%, (CVR_CTV - CVR_Base) ÷ CVR_CTV)) | Canais com amostra &lt; 30 views ou &lt; 5 compras herdam o AF_e consolidado do bloco | Prêmio AOV = max(0, AOV Com CTV - AOV Controle).</div>
+        </div>
+        <div class="table-box">
+          <div class="table-head-bar"><span class="table-head-title">2. Diagnóstico Comportamental no P2C (14d): Aceleração de Toques Não-CTV até a Compra</span><span style="color:var(--g-yellow-dark);font-weight:700;">Indicador Diagnóstico (não usado como proxy de compras)</span></div>
+          <div class="table-scroll"><table><thead><tr><th>Coorte de Jornada (P2C 14d)</th><th class="num">Vendas Solo P2C</th><th class="num">Compras Combo</th><th class="num">Média Toques Não-CTV</th><th class="num">Δ vs. Controle</th><th class="num">Variação de Toques (%)</th></tr></thead><tbody>{touch_rows}</tbody></table></div>
+          <div class="table-foot-math">Como calculamos (evidência comportamental complementar): Δ Toques = Média Toques Não-CTV Com CTV - Média Toques Controle Sem CTV ({fmt_dec(blk_t)} - {fmt_dec(base_t)} = {fmt_dec(blk_t - base_t, sign=True)} toques; {fmt_pct(blk_t_pct, sign=True)}). Nota metodológica: esta análise demonstra quantos impactos de mídia de performance são poupados quando o consumidor é exposto à CTV, sem entrar no cálculo de Compras Assistidas.</div>
         </div>
       </section>
 
@@ -613,7 +668,7 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
         <div class="slide-meta"><span class="slide-kicker">PASSO 08 • GOVERNANÇA TÉCNICA E PRÓXIMOS PASSOS</span><span class="slide-scope">Recomendações Executivas para {meta['agency_name']} &amp; {meta['brand_name']}</span></div>
         <h2 class="slide-title">Confiabilidade Metodológica e Plano de Ação</h2>
         <div class="grid-3">
-          <div class="card top-green"><div><span class="badge green">1. Ponte Cross-Device Determinística</span><ul class="clean-list"><li>Ambientes logados conectam Smart TV e smartphone no <code>Reach Overlap</code> sem depender de clique na TV.</li><li>Volume assistido (via <code>CVR Produto → Compra</code>) e prêmio de AOV são reportados em suas unidades exatas (pedidos vs. R$).</li></ul></div></div>
+          <div class="card top-green"><div><span class="badge green">1. Ponte Cross-Device &amp; Aceleração</span><ul class="clean-list"><li>Ambientes logados conectam Smart TV e smartphone no <code>Reach Overlap</code> sem depender de clique na TV.</li><li>Volume assistido (via <code>CVR Produto → Compra</code>) e prêmio de AOV são reportados em suas unidades exatas, enquanto a queda de toques Não-CTV no P2C (<code>{fmt_dec(blk_t)}</code> vs. <code>{fmt_dec(base_t)}</code>; <code>{fmt_pct(blk_t_pct, sign=True)}</code>) entra como evidência comportamental de aceleração de jornada.</li></ul></div></div>
           <div class="card top-yellow"><div><span class="badge yellow">2. Cautelas em Inventários Externos</span><ul class="clean-list"><li>Parceiros externos sem login unificado concentram maior parcela de alcance isolado ({fmt_pct(c_sec['exclusive_pct_site'] if c_sec else 0)} em <code>{c_sec['site'] if c_sec else 'Outros'}</code>).</li><li>Evitar misturar Mobile e Smart TV no mesmo Placement para preservar rastreio determinístico no P2C.</li></ul></div></div>
           <div class="card top-blue"><div><span class="badge blue">3. Próximos Passos</span><ul class="clean-list"><li>Conectar audiências de CTV ao retargeting de performance para elevar a conectividade Cross-Device.</li><li>Complementar com estudos incrementais (Conversion Lift / Geo-Lift) em voos de alta escala.</li></ul></div></div>
         </div>
@@ -621,7 +676,7 @@ def _build_site_deck(res: dict, out_dir: Path) -> dict:
     """
     titles = [
         "O Desafio de Medir CTV", "Metodologia Integrada", "Guia Visual Ilustrado", "Passo 1: Alcance & Interseção",
-        "Passo 2: Eficiência (CVR) & AOV", "Resultado Final CTV", "Visão 360° da Campanha", "Governança & Plano de Ação",
+        "Passo 2: CVR, AOV & Toques", "Resultado Final CTV", "Visão 360° da Campanha", "Governança & Plano de Ação",
     ]
     return {
         "id": "site",
@@ -745,6 +800,7 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
     has_ev_plat = bool(meta.get("has_event_platform_type"))
     ctrl_all = res["p2c_control_vs_ctv"]["control_multi_no_ctv_all"]
     ctrl_camp = res["p2c_control_vs_ctv"]["control_multi_no_ctv_camp"]
+    combo_blk = res["p2c_control_vs_ctv"]["ctv_combo_block_all"]
     ctv_chans, plat_list, sites_split = res["ctv_channels"], res["platform_breakdown"], res["all_sites_device_split"]
     comp = res.get("comparison_vs_site_method", {})
     sb = comp.get("site_block", {})
@@ -781,6 +837,35 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
         </tr>"""
         for i, c in enumerate(ctv_chans, 1)
     )
+    base_t = ctrl_all["avg_non_ctv_touches"]
+    blk_t = combo_blk["avg_non_ctv_touches"]
+    blk_t_pct = ((blk_t - base_t) / base_t * 100.0) if base_t > 0 else 0.0
+    dev_touch_rows = f"""<tr class="row-subtotal">
+      <td><strong>Grupo de Controle: Jornadas Multi-Canal Sem TV/STB</strong><div class="cell-sub">Pedidos no P2C sem toque puro de TV/STB ({fmt_int(ctrl_camp['conversions'])} restrito à camp.)</div></td>
+      <td class="num">—</td>
+      <td class="num">{fmt_int(ctrl_all['conversions'])}</td>
+      <td class="num"><strong>{fmt_dec(base_t)} toques</strong><div class="cell-sub">Camp: {fmt_dec(ctrl_camp['avg_non_ctv_touches'])} toques</div></td>
+      <td class="num">Base (0,00)</td>
+      <td class="num">Base (0,00%)</td>
+    </tr>""" + "".join(
+        f"""<tr>
+          <td><strong>Jornadas Com TV/STB em <code>{c['site']}</code></strong><div class="cell-sub">{f"{fmt_int(c.get('p2c_combo_camp_conversions', 0))} compras restritas à camp." if c['p2c_combo_all_conversions'] > 0 else 'Apenas venda Solo pura TV/STB observada'}</div></td>
+          <td class="num">{fmt_int(c['p2c_solo_conversions'])}</td>
+          <td class="num">{fmt_int(c['p2c_combo_all_conversions'])}</td>
+          <td class="num">{f"<strong>{fmt_dec(c['p2c_combo_all_nonctv_touches'])} toques</strong>" if c['p2c_combo_all_conversions'] > 0 else '—'}</td>
+          <td class="num">{f"{fmt_dec(c['p2c_combo_all_nonctv_touches'] - base_t, sign=True)} toques" if c['p2c_combo_all_conversions'] > 0 else '—'}</td>
+          <td class="num{' cell-highlight-green' if (c['p2c_combo_all_conversions'] > 0 and c['p2c_combo_all_nonctv_touches'] < base_t) else ''}">{f"{fmt_pct((c['p2c_combo_all_nonctv_touches'] - base_t) / base_t * 100.0, sign=True)}" if (c['p2c_combo_all_conversions'] > 0 and base_t > 0) else '—'}</td>
+        </tr>"""
+        for c in ctv_chans if (not c.get("is_residual_bucket") and (c["p2c_combo_all_conversions"] > 0 or c["p2c_solo_conversions"] > 0))
+    ) + f"""<tr class="row-total">
+      <td><strong>BLOCO TV + STB CONSOLIDADO (Jornadas Multi-Canal Com TV Pura ≥95%)</strong></td>
+      <td class="num">{fmt_int(blk['p2c_solo_conversions'])}</td>
+      <td class="num">{fmt_int(combo_blk['conversions'])}</td>
+      <td class="num">{fmt_dec(blk_t)} toques</td>
+      <td class="num">{fmt_dec(blk_t - base_t, sign=True)} toques</td>
+      <td class="num">{fmt_pct(blk_t_pct, sign=True) if combo_blk['conversions'] > 0 else '—'}</td>
+    </tr>"""
+
     res_rows = "".join(
         f"""<tr>
           <td><strong>{i}. <code>{c['site']}</code></strong><span class="cell-sub">Overlap Puro: {fmt_pct(c['overlap_pct_campaign'])}</span></td>
@@ -860,7 +945,7 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
         <div class="grid-3">
           <div class="card top-blue"><div><span class="badge blue">1. Inclusão-Exclusão Exata</span><p class="card-text">Como o CM360 bloqueia <code>Duplicate Reach</code> filtrado por <code>platformType</code>, extraímos Universo Total (<code>|U|</code>), Bloco TV/STB (<code>|A|</code>) e Bloco Não-CTV (<code>|B|</code>), obtendo <code>|A ∩ B| = |A| + |B| - |U|</code> com exatidão.</p></div><div class="math-foot">Cálculo: Fator Cross-Device: {fmt_int(ie['exact_cross_device_overlap_1plus'])} ÷ {fmt_int(blk['raw_duplicate_reach_1plus_sum'])} = {fmt_dec(ie['pure_cross_device_scale_factor'], 4)}</div></div>
           <div class="card top-yellow"><div><span class="badge yellow">{dev_card2_badge}</span><p class="card-text">{dev_card2_text}</p></div><div class="math-foot">{dev_card2_math}</div></div>
-          <div class="card top-green"><div><span class="badge green">3. Pureza P2C ≥95% para Solo &amp; AOV</span><p class="card-text">Isolamos {fmt_int(res['p2c_touch_purity_audit']['pure_ctv_touches_ge_95pct'])} toques determinísticos puros de TV (≥95%) no P2C para apurar Vendas Solo reais ({fmt_int(blk['p2c_solo_conversions'])} ped.) e preservar o Grupo de Controle do Ticket Médio ({fmt_int(ctrl_all['conversions'])} ped.; AOV {fmt_curr(ctrl_camp['aov'])}).</p></div><div class="math-foot">Cálculo: Toques mistos isolados (5%–95%): {fmt_int(res['p2c_touch_purity_audit']['mixed_touches_5_to_95pct'])}</div></div>
+          <div class="card top-green"><div><span class="badge green">3. Pureza P2C ≥95% (Solo, AOV &amp; Toques)</span><p class="card-text">Isolamos {fmt_int(res['p2c_touch_purity_audit']['pure_ctv_touches_ge_95pct'])} toques determinísticos puros de TV (≥95%) no P2C para apurar Vendas Solo reais ({fmt_int(blk['p2c_solo_conversions'])} ped.), preservar o Controle do AOV ({fmt_curr(ctrl_camp['aov'])}) e medir a aceleração comportamental de toques Não-CTV (<code>{fmt_dec(blk_t)}</code> vs. <code>{fmt_dec(base_t)}</code>; <code>{fmt_pct(blk_t_pct, sign=True)}</code>).</p></div><div class="math-foot">Cálculo: Toques mistos isolados (5%–95%): {fmt_int(res['p2c_touch_purity_audit']['mixed_touches_5_to_95pct'])} | Δ Toques P2C: {fmt_dec(blk_t - base_t, sign=True)}</div></div>
         </div>
       </section>
 
@@ -886,12 +971,13 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
       </section>
 
       <section class="slide-card slide-hidden">
-        <div class="slide-meta"><span class="slide-kicker">PÁGINA 05 • ALCANCE E INTERSEÇÃO CROSS-DEVICE (1+)</span><span class="slide-scope">Alocação Pura s/ TV∩TV vs. Soma Bruta Sites</span></div>
-        <h2 class="slide-title">Alcance Único, Co-Viewing e Interseção Cross-Device Pura (<code>TV ∩ Mobile/PC</code>)</h2>
-        <div class="table-box"><div class="table-scroll"><table><thead><tr><th>Canal com Entrega TV/STB</th><th class="num">Custo TV+STB</th><th class="num">Reach TV+STB</th><th class="num">Overlap Bruto</th><th class="num cell-highlight-green">Overlap Puro</th><th class="num">% Overlap Puro</th><th class="num cell-highlight-blue">Compras Interseção</th></tr></thead><tbody>{reach_rows}
+        <div class="slide-meta"><span class="slide-kicker">PÁGINA 05 • ALCANCE, INTERSEÇÃO CROSS-DEVICE (1+) E DIAGNÓSTICO DE TOQUES P2C</span><span class="slide-scope">Alocação Pura s/ TV∩TV vs. Soma Bruta Sites</span></div>
+        <h2 class="slide-title">Alcance Único, Interseção Cross-Device Pura (<code>TV ∩ Mobile/PC</code>) e Aceleração de Toques</h2>
+        <div class="table-box"><div class="table-head-bar"><span class="table-head-title">1. Abertura de Alcance e Interseção Cross-Device Pura (Sem TV ∩ TV)</span></div><div class="table-scroll"><table><thead><tr><th>Canal com Entrega TV/STB</th><th class="num">Custo TV+STB</th><th class="num">Reach TV+STB</th><th class="num">Overlap Bruto</th><th class="num cell-highlight-green">Overlap Puro</th><th class="num">% Overlap Puro</th><th class="num cell-highlight-blue">Compras Interseção</th></tr></thead><tbody>{reach_rows}
         <tr class="row-total"><td>BLOCO TV + STB EXATO (Sem TV ∩ TV)</td><td class="num">{fmt_curr(blk['cost'])}</td><td class="num">{fmt_int(ie['ctv_devices_reach_dedup'])}</td><td class="num">—</td><td class="num">{fmt_int(blk['duplicate_reach_1plus_sum'])}</td><td class="num">{fmt_pct(blk['overlap_pct_campaign_sum'])}</td><td class="num">{fmt_dec(blk['intersecao_compras_1plus'], 1)} comp.</td></tr>
         <tr class="row-raw"><td>SENSIBILIDADE: SOMA BRUTA SITES (Com TV ∩ TV)</td><td class="num">{fmt_curr(blk['cost'])}</td><td class="num">—</td><td class="num">{fmt_int(blk['raw_duplicate_reach_1plus_sum'])}</td><td class="num">—</td><td class="num">{fmt_pct(blk['raw_overlap_pct_campaign_sum'])}</td><td class="num">{fmt_dec(blk['raw_intersecao_compras_1plus'], 1)} comp.</td></tr>
         </tbody></table></div><div class="table-foot-math">Como calculamos: Overlap Puro = Overlap Bruto × {fmt_dec(ie['pure_cross_device_scale_factor'], 4)} | % Overlap Puro = Overlap Puro ÷ {fmt_int(tot['reach_devices'])} disp. | Compras Interseção = {fmt_int(tot['p2c_total_conversions'])} × (% Overlap Puro).</div></div>
+        <div class="table-box"><div class="table-head-bar"><span class="table-head-title">2. Diagnóstico Comportamental no P2C (14d): Aceleração de Toques Não-CTV até a Compra</span><span style="color:var(--g-yellow-dark);font-weight:700;">Indicador Diagnóstico (não usado como proxy de compras)</span></div><div class="table-scroll"><table><thead><tr><th>Coorte de Jornada (P2C 14d • TV Pura ≥95%)</th><th class="num">Vendas Solo P2C</th><th class="num">Compras Combo</th><th class="num">Média Toques Não-CTV</th><th class="num">Δ vs. Controle</th><th class="num">Variação de Toques (%)</th></tr></thead><tbody>{dev_touch_rows}</tbody></table></div><div class="table-foot-math">Como calculamos (evidência comportamental complementar): Δ Toques = Média Toques Não-CTV Com TV/STB - Média Toques Controle Sem TV/STB ({fmt_dec(blk_t)} - {fmt_dec(base_t)} = {fmt_dec(blk_t - base_t, sign=True)} toques; {fmt_pct(blk_t_pct, sign=True)}). Nota metodológica: indicador de encurtamento da jornada; o volume de Compras Assistidas segue estritamente o AF_e de CVR Produto → Compra.</div></div>
       </section>
 
       <section class="slide-card slide-hidden">
@@ -921,7 +1007,7 @@ def _build_device_deck(res: dict, out_dir: Path) -> dict:
     """
     titles = [
         "Descobertas por Device Type", "Inclusão-Exclusão Exata", "Guia Visual (3 Diagramas)", "Raio-X Plataforma & Sites",
-        "Alcance & Interseção (1+)", "Resultado Final Device CTV", "Comparativo Site vs. Device", "Diagnóstico & Boas Práticas",
+        "Alcance, Overlap & Toques", "Resultado Final Device CTV", "Comparativo Site vs. Device", "Diagnóstico & Boas Práticas",
     ]
     return {
         "id": "device",
