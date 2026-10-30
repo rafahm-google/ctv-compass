@@ -103,6 +103,8 @@ Camp_Test,DV360-DemandGen,600,66.67,300,33.33
         assert html_site.exists() and html_site.stat().st_size > 10_000
         site_txt = html_site.read_text(encoding="utf-8")
         assert "Diagnóstico Comportamental no P2C" in site_txt and "Média Toques Não-CTV" in site_txt
+        assert "Compras Influenciadas" in site_txt and "Receita Influenciada" in site_txt
+        assert "compras atribuídas" not in site_txt.lower() and "receita atribuída" not in site_txt.lower()
         assert "× economia de toques" not in site_txt.lower()
 
         # 2. Device-mode synthetic fixtures (Inclusion-Exclusion: |CTV|=500 + |NonCTV|=800 - |U|=1000 => Exact Overlap = 300; click-tracker P3 = 0 imp / 100 clicks)
@@ -191,6 +193,8 @@ DV360-DemandGen,800,800,3.5
         assert html_dev.exists() and html_dev.stat().st_size > 10_000
         dev_txt = html_dev.read_text(encoding="utf-8")
         assert "Diagnóstico Comportamental no P2C" in dev_txt and "Média Toques Não-CTV" in dev_txt
+        assert "Compras Influenciadas" in dev_txt and "Receita Influenciada" in dev_txt
+        assert "compras atribuídas" not in dev_txt.lower() and "receita atribuída" not in dev_txt.lower()
         assert "× economia de toques" not in dev_txt.lower()
 
         # 3. Unified 'both' mode WITH 'CTV' site naming
@@ -201,6 +205,8 @@ DV360-DemandGen,800,800,3.5
         assert "let activeDeck = 0," in both_txt and "switchDeck(1)" in both_txt
         assert "TOTAL BLOCO CTV RECONCILIADO" in both_txt
         assert "Diagnóstico Comportamental no P2C" in both_txt and "Média Toques Não-CTV" in both_txt
+        assert "Compras Influenciadas" in both_txt and "Receita Influenciada" in both_txt
+        assert "compras atribuídas" not in both_txt.lower() and "receita atribuída" not in both_txt.lower()
         assert "× economia de toques" not in both_txt.lower()
 
         # 4. Unified 'both' mode WITHOUT 'CTV' site naming + fallback without product tags

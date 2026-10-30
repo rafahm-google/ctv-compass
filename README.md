@@ -5,7 +5,7 @@ Serviço HTTP e pipeline CLI em Python para mensuração de campanhas de Connect
 O pipeline extrai e reconcilia três relatórios do CM360 na mesma janela de datas e `Campaign ID`:
 1. `STANDARD`: custo (`DV360 Cost` / `Media Cost`), `Platform Type`, `Attributed Event Platform Type` (`eventPlatformType`), conversões de último toque (`Click-Through` e `View-Through`) e visualizações de produto oficiais para apurar o funil `CVR Produto -> Compra` (`AF_e`, limitado ao teto simétrico de `50%`).
 2. `REACH`: `Unique Reach` deduplicado, `Co-Viewed Reach` e sobreposição cross-channel / cross-device (`Duplicate Impression Reach`).
-3. `PATH_TO_CONVERSION`: jornadas deduplicadas por `Conversion ID`, vendas solo, expansão de ticket médio (`AOV`) e diagnóstico comportamental de aceleração de toques Não-CTV até a compra (reportado como indicador complementar de jornada, sem entrar como proxy de volume atribuído).
+3. `PATH_TO_CONVERSION`: jornadas deduplicadas por `Conversion ID`, vendas solo, expansão de ticket médio (`AOV`) e diagnóstico comportamental de aceleração de toques Não-CTV até a compra (reportado como indicador complementar de jornada, sem entrar como proxy de compras influenciadas).
 
 Por padrão (`identification_mode="both"`), a saída é um arquivo HTML único autocontido (imagens renderizadas em `matplotlib` embutidas em Base64) com duas visões comutáveis:
 - `site`: classifica CTV pelo nome do `Site (CM360)`.
@@ -115,7 +115,7 @@ Na interface web (`web_app.py`) ou no JSON de configuração (`configs/campaign.
 - `brand_name` e `agency_name`: rótulos textuais exibidos no cabeçalho dos slides.
 - `identification_mode`: `both` (padrão), `site` ou `device`.
 - `purchase_activity_ids`: lista de `Activity IDs` do Floodlight contabilizadas como conversão. Na UI, todas as atividades do anunciante são carregadas da API em checkboxes; selecione apenas **1 atividade transacional de compra por plataforma** (`Web`, `Android`, `iOS`), desmarcando pixels agregadores (que disparam em duplicidade no mesmo pedido), eventos de topo/meio de funil e tags de outras marcas que compartilhem o mesmo `floodlightConfigurationId`.
-- `product_activity_ids`: lista opcional de `Activity IDs` de visualização de produto (`1 por plataforma`: `Web`, `Android`, `iOS`) usada como denominador da taxa de conversão pós-visualização de produto (`CVR Produto -> Compra = Compras Oficiais / Views de Produto Oficiais`) para calcular a Fração Atribuível entre Expostos (`AF_e = min(50%, max(0%, (CVR_CTV - CVR_NonCTV) / CVR_CTV))`). Caso o anunciante não possua tags de produto (`nonctv_prod == 0`), o pipeline aplica fallback automático conservador pelo ganho relativo de `AOV` limitado a `50%`.
+- `product_activity_ids`: lista opcional de `Activity IDs` de visualização de produto (`1 por plataforma`: `Web`, `Android`, `iOS`) usada como denominador da taxa de conversão pós-visualização de produto (`CVR Produto -> Compra = Compras Oficiais / Views de Produto Oficiais`) para calibrar o Peso de Influência entre Expostos (`AF_e = min(50%, max(0%, (CVR_CTV - CVR_NonCTV) / CVR_CTV))`) que pondera as **Compras Influenciadas** e a **Receita Influenciada** na interseção. Caso o anunciante não possua tags de produto (`nonctv_prod == 0`), o pipeline aplica fallback automático conservador pelo ganho relativo de `AOV` limitado a `50%`.
 
 ### 2. Regras Hardcoded no Código (Quando Editar Manualmente)
 
@@ -152,7 +152,7 @@ Caso a taxonomia ou a conta do anunciante divirja das premissas padrão, ajuste 
 - `CTV_PLATFORM_NAMES` (linha `28`): `{"Connected TV", "Set top box"}` (IDs `30004` e `30006`).
 - `PURE_CTV_PLACEMENT_THRESHOLD = 0.95` (linha `29`): fração mínima de impressões em TV/STB exigida para classificar um `Placement ID` como toque determinístico puro de CTV no `Path to Conversion`.
 - `MIN_MEANINGFUL_CTV_IMPS = 1000.0` (linha `30`): volume mínimo de impressões em TV/STB para exibir o Site individualmente na Visão Device (abaixo disso, agrupa em `Residual`).
-- `MAX_SHARED_ATTRIBUTION_PCT = 50.0` (linha `31`): teto simétrico máximo (`50%`) aplicado à Fração Atribuível `AF_e` nas conversões da interseção `CTV ∩ Non-CTV`.
+- `MAX_SHARED_ATTRIBUTION_PCT = 50.0` (linha `31`): teto simétrico máximo (`50%`) aplicado ao Peso de Influência `AF_e` nas conversões da interseção `CTV ∩ Non-CTV`.
 - `MIN_CVR_PURCHASES = 5.0` e `MIN_CVR_PROD_VIEWS = 30.0` (linhas `32–33`): amostra mínima exigida em `_compute_funnel_cvr_efficiency` (linha `223`) para calibrar o `CVR Produto -> Compra` diretamente por canal; abaixo disso, o canal herda o `AF_e` consolidado do bloco CTV da campanha. Para `AOV` no P2C, o limiar mínimo permanece `>= 5` conversões multi-toque observadas; canais contendo `"search"` no nome são sempre tratados como não-CTV (`linha 886`).
 
 #### f) Enriquecimento Opcional via API DV360 (`configs/campaign.example.json`)
@@ -168,7 +168,7 @@ Caso a taxonomia ou a conta do anunciante divirja das premissas padrão, ajuste 
 ├── common.py                     # Helpers de autenticação, parsers CSV do CM360/P2C e formatação
 ├── step0_setup_and_discover.py   # Descoberta via API de metadados da campanha e Floodlight Activities
 ├── step1_extract_reports.py      # Criação, polling e download de relatórios CM360 v5 (e DV360 opcional)
-├── step2_compute_methodology.py  # Cálculo de alcance/atribuição ('site', 'device', 'both') e asserts de reconciliação
+├── step2_compute_methodology.py  # Cálculo de alcance/influência calibrada ('site', 'device', 'both') e asserts de reconciliação
 ├── step3_generate_html.py        # Geração dos gráficos (matplotlib) e renderização do HTML autocontido
 ├── run_pipeline.py               # Entrypoint CLI (encadeia step1 -> step2 -> step3)
 ├── test_self_check.py            # Testes offline com fixtures sintéticas para os 3 modos e endpoints HTTP

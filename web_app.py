@@ -623,14 +623,14 @@ function streamJob(jobId) {
 
 function renderResult(jobId, s) {
   const note = s.roas_positive
-    ? ' — supera 1,0x de ROAS (gera mais receita atribuída do que o custo de mídia investido no veículo)'
+    ? ' — supera 1,0x de ROAS (gera mais receita influenciada do que o custo de mídia investido no veículo)'
     : '';
   document.getElementById('roasBanner').innerHTML = `<b>Concluído (${esc(s.brand_name)} — ${esc(s.mode)}).</b> Relatório validado${esc(note)}${esc(s.extra_note || '')}.`;
   document.getElementById('kpiGrid').innerHTML = `
     <div class="kpi"><div class="k-lbl">Investimento CTV</div><div class="k-val">${esc(s.cost)}</div><div class="k-sub">${esc(s.cost_share)} da campanha</div></div>
-    <div class="kpi"><div class="k-lbl">Compras Atribuídas</div><div class="k-val">${esc(s.conversions)}</div><div class="k-sub">${esc(s.conv_share)} do total P2C</div></div>
-    <div class="kpi"><div class="k-lbl">Receita Atribuída</div><div class="k-val">${esc(s.revenue)}</div><div class="k-sub">Unificada (Solo + Assistida + AOV)</div></div>
-    <div class="kpi"><div class="k-lbl">ROAS Equivalente</div><div class="k-val">${esc(s.roas)}</div><div class="k-sub">Receita ÷ Custo CTV</div></div>
+    <div class="kpi"><div class="k-lbl">Compras Influenciadas</div><div class="k-val">${esc(s.conversions)}</div><div class="k-sub">${esc(s.conv_share)} do total P2C</div></div>
+    <div class="kpi"><div class="k-lbl">Receita Influenciada</div><div class="k-val">${esc(s.revenue)}</div><div class="k-sub">Calibrada (Solo + Interseção 1+ + AOV)</div></div>
+    <div class="kpi"><div class="k-lbl">ROAS Influenciado</div><div class="k-val">${esc(s.roas)}</div><div class="k-sub">Receita Influenciada ÷ Custo CTV</div></div>
   `;
   document.getElementById('downloadBtn').href = `/api/jobs/${jobId}/report?download=1`;
   document.getElementById('openTabBtn').href = `/api/jobs/${jobId}/report`;
